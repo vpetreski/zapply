@@ -1,0 +1,138 @@
+"""Database models for Zapply."""
+
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+from sqlalchemy import JSON, DateTime, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+
+
+class JobStatus(str, Enum):
+    """Job processing status."""
+
+    NEW = "new"
+    MATCHED = "matched"
+    REJECTED = "rejected"
+    APPLIED = "applied"
+    FAILED = "failed"
+    REPORTED = "reported"
+
+
+class JobSource(str, Enum):
+    """Job source platforms."""
+
+    WORKING_NOMADS = "working_nomads"
+    WE_WORK_REMOTELY = "we_work_remotely"
+    REMOTIVE = "remotive"
+
+
+class Job(Base):
+    """Job posting from various sources."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Source information
+    source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    source_id: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Job details
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    company: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    requirements: Mapped[Optional[str]] = mapped_column(Text)
+    location: Mapped[Optional[str]] = mapped_column(String(200))
+    salary: Mapped[Optional[str]] = mapped_column(String(200))
+    tags: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # Raw data from source
+    raw_data: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Processing status
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=JobStatus.NEW.value, index=True
+    )
+
+    # Matching information
+    match_reasoning: Mapped[Optional[str]] = mapped_column(Text)
+    match_score: Mapped[Optional[float]] = mapped_column()
+
+    # Application information
+    application_data: Mapped[Optional[dict]] = mapped_column(JSON)
+    application_error: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    matched_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    reported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    def __repr__(self) -> str:
+        return f"<Job {self.id}: {self.title} at {self.company} ({self.status})>"
+
+
+class UserProfile(Base):
+    """User profile and preferences."""
+
+    __tablename__ = "user_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    location: Mapped[str] = mapped_column(String(200))
+    rate: Mapped[str] = mapped_column(String(100))
+
+    # CV and skills
+    cv_path: Mapped[str] = mapped_column(String(500))
+    cv_text: Mapped[Optional[str]] = mapped_column(Text)
+    skills: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # Job preferences
+    preferences: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    def __repr__(self) -> str:
+        return f"<UserProfile {self.id}: {self.name}>"
+
+
+class ApplicationLog(Base):
+    """Log of application attempts and results."""
+
+    __tablename__ = "application_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    job_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+
+    # Application details
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    screenshots: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # AI interaction
+    ai_prompts: Mapped[Optional[list]] = mapped_column(JSON)
+    ai_responses: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # Timing
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    duration_seconds: Mapped[Optional[float]] = mapped_column()
+
+    def __repr__(self) -> str:
+        return f"<ApplicationLog {self.id}: Job {self.job_id} ({self.status})>"

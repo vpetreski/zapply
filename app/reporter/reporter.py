@@ -1,0 +1,103 @@
+"""Application reporting and notifications."""
+
+from datetime import datetime, timedelta
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Job, JobStatus
+
+
+class Reporter:
+    """Generate reports and notifications about application activity."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        """Initialize reporter."""
+        self.db = db
+
+    async def generate_daily_report(self) -> dict[str, Any]:
+        """
+        Generate daily summary report.
+
+        Returns:
+            Dictionary with report data
+        """
+        # Get jobs from last 24 hours
+        since = datetime.utcnow() - timedelta(hours=24)
+
+        # Count by status
+        new_query = select(Job).filter(Job.created_at >= since, Job.status == JobStatus.NEW.value)
+        new_jobs = (await self.db.execute(new_query)).scalars().all()
+
+        matched_query = select(Job).filter(
+            Job.matched_at >= since, Job.status == JobStatus.MATCHED.value
+        )
+        matched_jobs = (await self.db.execute(matched_query)).scalars().all()
+
+        applied_query = select(Job).filter(
+            Job.applied_at >= since, Job.status == JobStatus.APPLIED.value
+        )
+        applied_jobs = (await self.db.execute(applied_query)).scalars().all()
+
+        failed_query = select(Job).filter(
+            Job.applied_at >= since, Job.status == JobStatus.FAILED.value
+        )
+        failed_jobs = (await self.db.execute(failed_query)).scalars().all()
+
+        return {
+            "period": "last_24_hours",
+            "summary": {
+                "new_jobs": len(new_jobs),
+                "matched_jobs": len(matched_jobs),
+                "applied_jobs": len(applied_jobs),
+                "failed_jobs": len(failed_jobs),
+            },
+            "applied_to": [
+                {"id": job.id, "title": job.title, "company": job.company, "url": job.url}
+                for job in applied_jobs
+            ],
+            "failures": [
+                {
+                    "id": job.id,
+                    "title": job.title,
+                    "company": job.company,
+                    "error": job.application_error,
+                }
+                for job in failed_jobs
+            ],
+            "generated_at": datetime.utcnow().isoformat(),
+        }
+
+    async def send_notification(self, report: dict[str, Any]) -> bool:
+        """
+        Send notification with report.
+
+        TODO: Implement email/webhook notifications
+        """
+        # For MVP, just print to console
+        print("\n" + "=" * 80)
+        print("ZAPPLY DAILY REPORT")
+        print("=" * 80)
+        print(f"Period: {report['period']}")
+        print(f"\nSummary:")
+        print(f"  New jobs scraped: {report['summary']['new_jobs']}")
+        print(f"  Jobs matched: {report['summary']['matched_jobs']}")
+        print(f"  Applications submitted: {report['summary']['applied_jobs']}")
+        print(f"  Applications failed: {report['summary']['failed_jobs']}")
+
+        if report["applied_to"]:
+            print(f"\nSuccessfully applied to:")
+            for job in report["applied_to"]:
+                print(f"  - {job['title']} at {job['company']}")
+                print(f"    {job['url']}")
+
+        if report["failures"]:
+            print(f"\nFailed applications:")
+            for job in report["failures"]:
+                print(f"  - {job['title']} at {job['company']}")
+                print(f"    Error: {job['error']}")
+
+        print("=" * 80 + "\n")
+
+        return True
