@@ -27,14 +27,14 @@ install-fe:
 
 # Database: Start PostgreSQL in Docker
 db-start:
-    docker-compose up -d postgres
+    docker compose up -d postgres
     @echo "⏳ Waiting for database to be ready..."
     @sleep 3
     @echo "✅ Database is running"
 
 # Database: Stop PostgreSQL
 db-stop:
-    docker-compose stop postgres
+    docker compose stop postgres
 
 # Database: Create migration
 db-migrate name:
@@ -52,7 +52,7 @@ db-downgrade:
 db-reset:
     @echo "⚠️  WARNING: This will destroy all data!"
     @read -p "Are you sure? (yes/no): " confirm && [ "$$confirm" = "yes" ] || exit 1
-    docker-compose down -v
+    docker compose down -v
     just db-start
     just db-upgrade
 
@@ -84,25 +84,25 @@ dev-setup:
 
 # Docker: Build all containers
 docker-build:
-    docker-compose build
+    docker compose build
 
 # Docker: Start all services
 docker-up:
-    docker-compose up -d
+    docker compose up -d
 
 # Docker: Stop all services
 docker-down:
-    docker-compose down
+    docker compose down
 
 # Docker: View logs
 docker-logs:
-    docker-compose logs -f
+    docker compose logs -f
 
 # Docker: Rebuild and restart all services
 docker-restart:
-    docker-compose down
-    docker-compose build
-    docker-compose up -d
+    docker compose down
+    docker compose build
+    docker compose up -d
 
 # Code Quality: Format Python code
 format:
@@ -160,7 +160,7 @@ health:
     @echo "🏥 Checking service health..."
     @curl -s http://localhost:8000/health | python3 -m json.tool || echo "❌ Backend is not responding"
     @curl -s http://localhost:3000 > /dev/null && echo "✅ Frontend is accessible" || echo "❌ Frontend is not accessible"
-    @docker-compose ps postgres | grep -q "Up" && echo "✅ Database is running" || echo "❌ Database is not running"
+    @docker compose ps postgres | grep -q "Up" && echo "✅ Database is running" || echo "❌ Database is not running"
 
 # Show current status
 status:
@@ -168,7 +168,7 @@ status:
     @echo "================"
     @echo ""
     @echo "Docker Services:"
-    @docker-compose ps
+    @docker compose ps
     @echo ""
     @echo "Git Status:"
     @git status -s
