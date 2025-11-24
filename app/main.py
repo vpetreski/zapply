@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.config import settings
 from app.database import engine
-from app.routers import health, jobs, stats
+from app.routers import health, jobs, scraper, stats
 
 
 @asynccontextmanager
@@ -49,6 +49,7 @@ app.add_middleware(
 app.include_router(health.router, tags=["Health"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
+app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 
 
 @app.get("/")
