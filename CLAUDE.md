@@ -10,7 +10,7 @@ You are the primary development assistant for this project. Your responsibilitie
 
 1. **Understand the domain**: Remote job hunting for international contractors
 2. **Implement features**: Build scraper, matcher, applier, and reporter components
-3. **Maintain context**: Always read and update `ai.md` when user says "save"
+3. **Maintain context**: Always read and update `docs/ai.md` when user says "save"
 4. **Follow architecture**: Python/FastAPI backend, Vue.js frontend, PostgreSQL database
 5. **Use AI wisely**: Claude API for matching and application automation
 
@@ -122,7 +122,7 @@ Design tables to track:
 ## Development Workflow
 
 ### Session Start
-1. Read `ai.md` to understand current state
+1. Read `docs/ai.md` to understand current state
 2. Tell user what's next based on last session
 3. Ask for confirmation or adjustments
 
@@ -133,7 +133,7 @@ Design tables to track:
 4. Document decisions in code comments
 
 ### Session End (when user says "save")
-1. Update `ai.md` with:
+1. Update `docs/ai.md` with:
    - What was accomplished
    - Current status
    - Next steps
@@ -227,7 +227,7 @@ Don't ask for:
 - Obvious implementation details
 - Following established patterns
 
-## Context File (`ai.md`)
+## Context File (`docs/ai.md`)
 
 This is the persistent memory across sessions. Update it when user says "save" with:
 

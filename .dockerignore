@@ -56,6 +56,6 @@ Dockerfile
 # Documentation
 README.md
 docs/initial-prompt.md
+docs/ai.md
 CLAUDE.md
 .cursorrules
-ai.md

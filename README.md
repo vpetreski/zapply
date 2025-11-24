@@ -123,9 +123,10 @@ zapply/
 │   └── reporter/          # Reporting and notifications
 ├── frontend/              # Vue.js dashboard
 ├── docker/                # Docker configuration
-├── docs/                  # Documentation
+├── docs/                  # Documentation and AI context
+│   ├── ai.md             # AI context tracking
+│   └── initial-prompt.md # Project requirements
 ├── tests/                 # Test suite
-├── ai.md                  # AI context tracking
 ├── CLAUDE.md              # Claude Code instructions
 ├── .cursorrules           # Cursor IDE configuration
 ├── docker-compose.yml     # Docker Compose setup
@@ -137,9 +138,9 @@ zapply/
 
 This project uses AI-assisted development with persistent context tracking:
 
-1. **Start session**: Open Claude Code - it loads context from `ai.md`
+1. **Start session**: Open Claude Code - it loads context from `docs/ai.md`
 2. **Work together**: Collaborate on implementation
-3. **Save progress**: Say "save" to update `ai.md` and commit
+3. **Save progress**: Say "save" to update `docs/ai.md` and commit
 4. **PR workflow**: All changes go through pull requests
 5. **Code review**: Cursor Bugbot reviews PRs automatically
 
