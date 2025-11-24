@@ -1,0 +1,307 @@
+# Cursor Rules for Zapply
+
+## Project Overview
+AI-powered job application automation system. Python 3.12 + FastAPI backend, Vue.js frontend, PostgreSQL database. MVP timeline: 1 week.
+
+## Tech Stack
+- Backend: Python 3.12, FastAPI, SQLAlchemy, Playwright, Anthropic Claude API
+- Frontend: Vue.js (latest)
+- Database: PostgreSQL
+- Package Manager: uv (NOT pip or poetry)
+- Deployment: Docker on Synology NAS
+
+## Code Style
+
+### Python
+- Always use type hints for function parameters and return values
+- Use async/await for I/O-bound operations (FastAPI handlers, database queries, API calls)
+- Use Pydantic models for data validation
+- Follow PEP 8 style guide
+- Maximum line length: 100 characters
+- Use descriptive variable names (no single letters except loop counters)
+
+### FastAPI
+- Use dependency injection for database sessions, configuration
+- Return Pydantic response models from endpoints
+- Use proper HTTP status codes
+- Include error handling middleware
+- Document endpoints with docstrings
+
+### Database
+- Use SQLAlchemy 2.0+ syntax (async where appropriate)
+- Define models with proper relationships
+- Use Alembic for migrations
+- Never hard-code database credentials
+
+### JavaScript/Vue.js
+- Use Vue 3 Composition API (not Options API)
+- Use TypeScript if possible, else strict JS
+- Follow Vue.js style guide
+- Use modern ES6+ features
+- Keep components small and focused
+
+## File Organization
+
+```
+app/
+├── main.py              # FastAPI app entry point
+├── config.py            # Configuration (env vars)
+├── database.py          # DB connection, base model
+├── models.py            # SQLAlchemy models
+├── schemas.py           # Pydantic schemas
+├── dependencies.py      # FastAPI dependencies
+├── scraper/
+│   ├── __init__.py
+│   ├── base.py          # Base scraper interface
+│   ├── working_nomads.py
+│   └── scheduler.py     # Hourly scheduler
+├── matcher/
+│   ├── __init__.py
+│   ├── matcher.py       # Claude-powered matching
+│   └── filters.py       # Business logic filters
+├── applier/
+│   ├── __init__.py
+│   ├── applier.py       # Main application logic
+│   └── playwright_helper.py
+└── reporter/
+    ├── __init__.py
+    └── reporter.py      # Status reporting
+```
+
+## Critical Business Rules
+
+### Job Filtering
+**Auto-reject if:**
+- Requires US work authorization
+- Requires physical presence (hybrid, office)
+- Location-specific (must be in X country)
+
+**Auto-match if:**
+- Truly remote (location agnostic)
+- Accepts international contractors
+- Latam/Colombia-friendly
+- Matches skill profile (backend, Java, Kotlin, Python, etc.)
+
+### User Profile
+- Principal Software Engineer, 20 years experience
+- Located in Colombia (no US work permit)
+- Remote contractor via Petreski LLC
+- Rate: $10k/month
+- Core: Java, Kotlin, Spring Boot, Backend, Architecture
+- Extended: Python, FastAPI, Go, Node, TypeScript
+
+## Package Management
+
+**IMPORTANT**: This project uses `uv`, not pip or poetry.
+
+```bash
+# Add dependency
+uv add package-name
+
+# Add dev dependency
+uv add --dev package-name
+
+# Install all dependencies
+uv sync
+
+# Run Python script
+uv run python script.py
+
+# Run command in uv environment
+uv run uvicorn app.main:app
+```
+
+Never suggest `pip install` or `poetry add`. Always use `uv`.
+
+## Environment Variables
+
+Never hard-code sensitive data. Use `.env` file:
+
+```bash
+DATABASE_URL=postgresql://user:pass@host:port/db
+ANTHROPIC_API_KEY=sk-ant-xxx
+WORKING_NOMADS_USERNAME=xxx
+WORKING_NOMADS_PASSWORD=xxx
+SCHEDULER_INTERVAL_MINUTES=60
+```
+
+Load with `pydantic-settings`:
+
+```python
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    database_url: str
+    anthropic_api_key: str
+
+    class Config:
+        env_file = ".env"
+```
+
+## AI Integration
+
+### Claude API Usage
+- Use for Matcher (intelligent job filtering)
+- Use for Applier (form filling, answering questions)
+- Be cost-efficient - don't make unnecessary calls
+- Cache responses where applicable
+- Handle rate limits gracefully
+
+### When NOT to use AI
+- Scraping (use Playwright only)
+- Simple data transformation
+- Basic filtering (use business logic)
+- Configuration management
+
+## Testing
+
+### MVP Phase
+- Focus on manual testing
+- Test with real job data
+- Verify filtering logic carefully
+- Test application flow end-to-end
+
+### Future
+- pytest for unit tests
+- pytest-asyncio for async tests
+- Playwright for E2E tests
+- Coverage target: 80%+
+
+## Docker
+
+### Development
+```bash
+docker-compose up -d postgres  # DB only
+uv run uvicorn app.main:app --reload  # Run backend locally
+```
+
+### Production
+```bash
+docker-compose up -d  # All services
+```
+
+## Common Patterns
+
+### FastAPI Endpoint
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import get_db
+from app.schemas import JobResponse
+from app import models
+
+router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+@router.get("/", response_model=list[JobResponse])
+async def list_jobs(
+    status: str | None = None,
+    db: AsyncSession = Depends(get_db)
+) -> list[JobResponse]:
+    """List jobs with optional status filter."""
+    query = select(models.Job)
+    if status:
+        query = query.filter(models.Job.status == status)
+    result = await db.execute(query)
+    jobs = result.scalars().all()
+    return jobs
+```
+
+### Database Model
+```python
+from sqlalchemy import String, Text, DateTime, Enum
+from sqlalchemy.orm import Mapped, mapped_column
+from datetime import datetime
+from app.database import Base
+
+class Job(Base):
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    url: Mapped[str] = mapped_column(String(500), unique=True)
+    title: Mapped[str] = mapped_column(String(200))
+    company: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="new")
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+```
+
+### Claude API Call
+```python
+import anthropic
+from app.config import settings
+
+async def match_job(job: Job, cv_content: str) -> tuple[bool, str]:
+    """Match job against CV using Claude API."""
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+    prompt = f"""
+    CV: {cv_content}
+
+    Job: {job.title} at {job.company}
+    Description: {job.description}
+
+    Does this job match? Must be: remote, contractor-friendly, Colombia/Latam accepted.
+    Reject if: requires US authorization, hybrid, location-specific.
+
+    Respond with: MATCH or REJECT, followed by brief reasoning.
+    """
+
+    message = client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=500,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    response = message.content[0].text
+    is_match = response.startswith("MATCH")
+    reasoning = response
+
+    return is_match, reasoning
+```
+
+## MVP Scope - Don't Over-Engineer
+
+**Week 1 Only:**
+- Working Nomads scraper
+- Basic Claude matcher
+- Basic Playwright applier
+- Postgres status tracking
+- Console reporter
+- Minimal dashboard
+
+**NOT in MVP:**
+- Multiple job sources
+- Advanced analytics
+- Email notifications
+- User management
+- Commercial features
+
+Keep it simple. Make it work. Ship fast.
+
+## Git Workflow
+
+- Commit frequently with clear messages
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`
+- Create PRs for review (Cursor Bugbot will review)
+- Don't commit `.env`, secrets, or local data
+
+## When Reviewing Code
+
+Look for:
+- Missing type hints
+- Hard-coded credentials
+- Missing error handling
+- Inefficient database queries
+- Unnecessary AI API calls
+- Over-engineering
+- Violations of business rules
+
+## Remember
+
+This is an MVP with a 1-week deadline. Prioritize:
+1. Working features over perfect code
+2. Real testing over extensive test coverage
+3. Simple solutions over complex architectures
+4. Shipping over polish
+
+You can refactor later. Get it working first.
