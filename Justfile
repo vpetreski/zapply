@@ -9,6 +9,8 @@ default:
 setup:
     @echo "📦 Installing Python dependencies with uv..."
     uv sync
+    @echo "🎭 Installing Playwright browsers..."
+    uv run playwright install chromium
     @echo "📦 Installing frontend dependencies..."
     cd frontend && npm install
     @echo "📝 Setting up environment file..."
