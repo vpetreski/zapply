@@ -328,7 +328,7 @@ h1 {
 }
 
 .setting-select {
-  padding: 0.75rem;
+  padding: 0.75rem 2.5rem 0.75rem 0.75rem; /* Add right padding for dropdown arrow */
   background: #2a2a2a;
   border: 1px solid #404040;
   border-radius: 4px;

@@ -333,12 +333,14 @@ onUnmounted(() => {
 
 .score-slider {
   width: 120px;
-  height: 6px;
+  height: 20px; /* Increased from 6px to provide space for thumb */
   background: transparent;
-  border-radius: 3px;
   outline: none;
   -webkit-appearance: none;
   appearance: none;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 /* Webkit (Chrome/Safari) track */
@@ -347,6 +349,7 @@ onUnmounted(() => {
   height: 6px;
   background: var(--bg-darker);
   border-radius: 3px;
+  cursor: pointer;
 }
 
 /* Webkit thumb */
@@ -356,17 +359,24 @@ onUnmounted(() => {
   width: 16px;
   height: 16px;
   background: var(--primary);
-  cursor: pointer;
+  cursor: grab;
   border-radius: 50%;
-  margin-top: -5px; /* Center the thumb on the track */
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--primary);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  position: relative;
+  z-index: 10;
+  margin-top: -5px;
 }
 
 .score-slider::-webkit-slider-thumb:hover {
   background: var(--primary-light);
-  transform: scale(1.2);
-  box-shadow: 0 3px 6px rgba(74, 158, 255, 0.4);
+  border-color: var(--primary-light);
+  box-shadow: 0 3px 8px rgba(74, 158, 255, 0.6);
+}
+
+.score-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  box-shadow: 0 2px 4px rgba(74, 158, 255, 0.8);
 }
 
 /* Firefox track */
@@ -376,6 +386,7 @@ onUnmounted(() => {
   background: var(--bg-darker);
   border-radius: 3px;
   border: none;
+  cursor: pointer;
 }
 
 /* Firefox thumb */
@@ -383,17 +394,23 @@ onUnmounted(() => {
   width: 16px;
   height: 16px;
   background: var(--primary);
-  cursor: pointer;
+  cursor: grab;
   border-radius: 50%;
-  border: none;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--primary);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  position: relative;
+  z-index: 10;
 }
 
 .score-slider::-moz-range-thumb:hover {
   background: var(--primary-light);
-  transform: scale(1.2);
-  box-shadow: 0 3px 6px rgba(74, 158, 255, 0.4);
+  border-color: var(--primary-light);
+  box-shadow: 0 3px 8px rgba(74, 158, 255, 0.6);
+}
+
+.score-slider::-moz-range-thumb:active {
+  cursor: grabbing;
+  box-shadow: 0 2px 4px rgba(74, 158, 255, 0.8);
 }
 
 .loading, .empty {

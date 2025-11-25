@@ -208,6 +208,8 @@ onUnmounted(() => {
   font-size: 0.85rem;
   color: #4a9eff;
   font-weight: 500;
+  cursor: default;
+  user-select: none;
 }
 
 .recent-activity {
