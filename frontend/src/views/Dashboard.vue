@@ -156,9 +156,9 @@ const formatRelativeTime = (timestamp) => {
 }
 
 const formatLogTime = (timestamp) => {
-  // Backend returns timezone-naive UTC timestamps
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' })
+  // Backend returns timezone-naive UTC timestamps - append 'Z' to parse as UTC, display in local time
+  const date = new Date(timestamp + 'Z')
+  return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 // Auto-refresh intervals
