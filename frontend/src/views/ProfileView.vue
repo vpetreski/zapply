@@ -1,5 +1,8 @@
 <template>
   <div class="profile-container">
+    <!-- Profile Warning Banner -->
+    <ProfileWarningBanner ref="profileBannerRef" />
+
     <h1>👤 User Profile</h1>
 
     <!-- Loading State -->
@@ -241,6 +244,7 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
 interface Profile {
   id: number
@@ -270,6 +274,7 @@ const profile = ref<Profile | null>(null)
 const editMode = ref(false)
 const error = ref('')
 const showDeleteDialog = ref(false)
+const profileBannerRef = ref(null)
 
 const formData = ref({
   name: '',
@@ -408,6 +413,11 @@ async function saveProfile() {
     await loadProfile()
     editMode.value = false
     generatedProfile.value = null
+
+    // Refresh banner to hide warning now that profile exists
+    if (profileBannerRef.value?.refresh) {
+      profileBannerRef.value.refresh()
+    }
   } catch (err: any) {
     error.value = `Failed to save profile: ${err.response?.data?.detail || err.message}`
   } finally {
@@ -427,6 +437,11 @@ async function handleDeleteConfirm() {
     await axios.delete('/api/profile')
     profile.value = null
     showDeleteDialog.value = false
+
+    // Refresh banner to show warning now that profile is deleted
+    if (profileBannerRef.value?.refresh) {
+      profileBannerRef.value.refresh()
+    }
   } catch (err: any) {
     error.value = `Failed to delete profile: ${err.response?.data?.detail || err.message}`
     showDeleteDialog.value = false

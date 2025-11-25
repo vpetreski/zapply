@@ -1,9 +1,9 @@
 <template>
   <div class="admin-container">
-    <h1>🔧 Admin</h1>
-
     <!-- Profile Warning Banner -->
     <ProfileWarningBanner />
+
+    <h1>🔧 Admin</h1>
 
     <!-- Settings -->
     <section class="admin-section">

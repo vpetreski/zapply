@@ -1,9 +1,9 @@
 <template>
   <div class="dashboard">
-    <h2>Dashboard</h2>
-
     <!-- Profile Warning Banner -->
     <ProfileWarningBanner />
+
+    <h2>Dashboard</h2>
 
     <div class="grid grid-3" style="margin-top: 2rem;">
       <div class="card stat-card">
