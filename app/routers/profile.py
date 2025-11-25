@@ -27,12 +27,15 @@ class ProfileResponse(BaseModel):
     id: int
     name: str
     email: str
+    phone: Optional[str]
     location: str
     rate: str
-    cv_path: Optional[str]
+    cv_filename: Optional[str]
     cv_text: Optional[str]
+    custom_instructions: Optional[str]
     skills: Optional[list[str]]
     preferences: Optional[dict]
+    ai_generated_summary: Optional[str]
     created_at: datetime
     updated_at: datetime
 
@@ -47,9 +50,10 @@ class GenerateProfileRequest(BaseModel):
     """Request to generate profile using Claude AI."""
 
     cv_text: str
-    custom_prompt: str
+    custom_instructions: str
     name: str
     email: str
+    phone: Optional[str]
     location: str
     rate: str
 
@@ -68,11 +72,16 @@ class UpdateProfileRequest(BaseModel):
 
     name: str
     email: str
+    phone: Optional[str]
     location: str
     rate: str
+    cv_filename: Optional[str]
+    cv_data_base64: Optional[str]  # Base64 encoded PDF file
     cv_text: str
+    custom_instructions: Optional[str]
     skills: list[str]
     preferences: dict
+    ai_generated_summary: Optional[str]
 
 
 @router.get("/exists", response_model=ProfileExistsResponse)
@@ -105,12 +114,15 @@ async def get_profile(db: AsyncSession = Depends(get_db)) -> Optional[ProfileRes
         id=profile.id,
         name=profile.name,
         email=profile.email,
+        phone=profile.phone,
         location=profile.location,
         rate=profile.rate,
-        cv_path=profile.cv_path,
+        cv_filename=profile.cv_filename,
         cv_text=profile.cv_text,
+        custom_instructions=profile.custom_instructions,
         skills=profile.skills,
         preferences=profile.preferences,
+        ai_generated_summary=profile.ai_generated_summary,
         created_at=profile.created_at,
         updated_at=profile.updated_at,
     )
@@ -138,43 +150,39 @@ async def generate_profile(
 **INPUT CV:**
 {request.cv_text}
 
-**USER INSTRUCTIONS:**
-{request.custom_prompt}
+**CUSTOM INSTRUCTIONS FROM USER:**
+{request.custom_instructions}
 
 **USER DETAILS:**
 - Name: {request.name}
 - Email: {request.email}
+- Phone: {request.phone or 'Not provided'}
 - Location: {request.location}
 - Rate: {request.rate}
 
 **YOUR TASK:**
-Analyze the CV and user instructions to create an optimized profile for AI-powered job matching. Generate:
+Analyze the CV and custom instructions to create an optimized profile for AI-powered job matching.
+
+The custom instructions contain ALL user preferences, requirements, and constraints. Pay close attention to them.
+
+Generate:
 
 1. **Comprehensive Skills List**: Extract all technical and business skills from CV
-2. **Job Preferences**: Determine preferred industries, company sizes, work arrangements based on CV and instructions
-3. **Optimized Profile Text**: Create a detailed, well-structured profile that highlights key experience and strengths
-
-**IMPORTANT CONSTRAINTS** (from user instructions):
-- Location: {request.location} (Colombian and Serbian citizenship, NO US work authorization)
-- Work Type: 100% remote contractor only
-- Must reject jobs requiring US work authorization
-- Must reject jobs requiring physical presence or hybrid work
-- Focus on roles matching experience level and rate expectations
+2. **Job Preferences**: Extract and structure preferences from custom instructions (work type, location requirements, rate expectations, etc.)
+3. **Optimized Profile Text**: Create a detailed, well-structured profile that highlights key experience and strengths from the CV
 
 Respond in this exact JSON format:
 {{
   "cv_text": "<optimized profile text - comprehensive, well-structured, highlights key strengths>",
   "skills": ["skill1", "skill2", ...],
   "preferences": {{
-    "rate_monthly": {request.rate.replace('$', '').replace(',', '').replace('/month', '').strip()},
-    "remote_only": true,
-    "contractor_only": true,
-    "location_restrictions": "NO US work authorization - must accept international contractors or hire in Latam/Colombia",
+    "rate": "{request.rate}",
+    "location": "{request.location}",
+    "key_requirements": ["requirement1", "requirement2", ...],
     "preferred_industries": ["Industry1", "Industry2", ...],
-    "preferred_roles": ["Role1", "Role2", ...],
-    "willing_to_relocate": false
+    "preferred_roles": ["Role1", "Role2", ...]
   }},
-  "generated_summary": "<brief 2-3 sentence summary of key changes/highlights>"
+  "generated_summary": "<brief 2-3 sentence summary of the profile and key highlights>"
 }}"""
 
     try:
@@ -212,14 +220,13 @@ Respond in this exact JSON format:
 @router.post("/upload-cv")
 async def upload_cv(
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
 ) -> dict:
     """
     Upload CV file (PDF) and extract text.
 
-    Returns extracted text to be used in profile generation.
+    Returns extracted text and base64 encoded file to be used in profile generation.
     """
-    if not file.filename.endswith('.pdf'):
+    if not file.filename or not file.filename.endswith('.pdf'):
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are supported"
@@ -234,11 +241,15 @@ async def upload_cv(
         # In production, use: from pypdf import PdfReader
         extracted_text = f"[PDF content from {file.filename}]\n\nTODO: Implement PDF text extraction"
 
+        # Encode as base64 for transmission
+        file_base64 = base64.b64encode(content).decode('utf-8')
+
         return {
             "success": True,
             "filename": file.filename,
             "text": extracted_text,
-            "size": len(content)
+            "size": len(content),
+            "file_data": file_base64
         }
 
     except Exception as e:
@@ -262,27 +273,49 @@ async def update_profile(
     result = await db.execute(select(UserProfile).limit(1))
     profile = result.scalar_one_or_none()
 
+    # Decode CV data if provided
+    cv_data = None
+    if request.cv_data_base64:
+        try:
+            cv_data = base64.b64decode(request.cv_data_base64)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid CV data encoding: {str(e)}"
+            )
+
     if profile:
         # Update existing profile
         profile.name = request.name
         profile.email = request.email
+        profile.phone = request.phone
         profile.location = request.location
         profile.rate = request.rate
+        if request.cv_filename:
+            profile.cv_filename = request.cv_filename
+        if cv_data:
+            profile.cv_data = cv_data
         profile.cv_text = request.cv_text
+        profile.custom_instructions = request.custom_instructions
         profile.skills = request.skills
         profile.preferences = request.preferences
+        profile.ai_generated_summary = request.ai_generated_summary
         profile.updated_at = datetime.now(timezone.utc)
     else:
         # Create new profile
         profile = UserProfile(
             name=request.name,
             email=request.email,
+            phone=request.phone,
             location=request.location,
             rate=request.rate,
-            cv_path="",  # No longer using file path
+            cv_filename=request.cv_filename,
+            cv_data=cv_data,
             cv_text=request.cv_text,
+            custom_instructions=request.custom_instructions,
             skills=request.skills,
             preferences=request.preferences,
+            ai_generated_summary=request.ai_generated_summary,
         )
         db.add(profile)
 
@@ -293,12 +326,15 @@ async def update_profile(
         id=profile.id,
         name=profile.name,
         email=profile.email,
+        phone=profile.phone,
         location=profile.location,
         rate=profile.rate,
-        cv_path=profile.cv_path,
+        cv_filename=profile.cv_filename,
         cv_text=profile.cv_text,
+        custom_instructions=profile.custom_instructions,
         skills=profile.skills,
         preferences=profile.preferences,
+        ai_generated_summary=profile.ai_generated_summary,
         created_at=profile.created_at,
         updated_at=profile.updated_at,
     )

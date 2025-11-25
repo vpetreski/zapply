@@ -9,7 +9,7 @@
           The profile is used for AI-powered job matching and application.
         </p>
       </div>
-      <router-link to="/profile" class="banner-button">
+      <router-link to="/profile?create=true" class="banner-button">
         Create Profile →
       </router-link>
     </div>
