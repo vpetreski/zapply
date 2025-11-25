@@ -269,7 +269,12 @@ just dev-frontend    # Run frontend (terminal 2)
 2. **Review database cleanup logic** - Check `scripts/clean_jobs_runs.py`
    - Verify it preserves UserProfile correctly
    - Understand what gets deleted vs. preserved
-3. **Test matching with fresh run:**
+3. **Implement UserProfile view in UI:**
+   - Add `/api/profile` endpoint to get user profile
+   - Create new Vue.js view to display profile information
+   - Show: name, email, location, rate, skills, preferences, CV text
+   - Allow reviewing what the AI sees when matching
+4. **Test matching with fresh run:**
    - Trigger new scraping run via `/api/scraper/run` endpoint
    - Monitor matching results and scoring accuracy
    - Verify matches target Principal-level backend/Java/Kotlin roles
