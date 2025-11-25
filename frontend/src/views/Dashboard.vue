@@ -128,7 +128,8 @@ const fetchLatestRun = async () => {
 
 const formatRunTime = (run) => {
   if (run.status === 'running') {
-    const start = new Date(run.started_at)
+    // Backend returns timezone-naive UTC timestamps - append 'Z' to parse as UTC
+    const start = new Date(run.started_at + 'Z')
     const now = new Date()
     const elapsed = Math.floor((now - start) / 1000)
     const minutes = Math.floor(elapsed / 60)
@@ -142,7 +143,9 @@ const formatRunTime = (run) => {
 }
 
 const formatRelativeTime = (timestamp) => {
-  const date = new Date(timestamp)
+  // Backend returns timezone-naive UTC timestamps
+  // Append 'Z' to parse as UTC, then JavaScript handles conversion automatically
+  const date = new Date(timestamp + 'Z')
   const now = new Date()
   const diff = Math.floor((now - date) / 1000)
 
@@ -153,8 +156,9 @@ const formatRelativeTime = (timestamp) => {
 }
 
 const formatLogTime = (timestamp) => {
+  // Backend returns timezone-naive UTC timestamps
   const date = new Date(timestamp)
-  return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' })
 }
 
 // Auto-refresh intervals
