@@ -2,6 +2,33 @@
   <div class="admin-container">
     <h1>🔧 Admin</h1>
 
+    <!-- Settings -->
+    <section class="admin-section">
+      <h2>⚙️ Settings</h2>
+
+      <div class="setting-item">
+        <label for="run-frequency" class="setting-label">
+          <span class="label-text">Run Frequency</span>
+          <span class="label-description">Configure how often the job scraper runs automatically</span>
+        </label>
+        <select
+          id="run-frequency"
+          v-model="runFrequency"
+          @change="saveRunFrequency"
+          class="setting-select"
+          :disabled="savingFrequency"
+        >
+          <option value="manual">Manual</option>
+          <option value="daily">Daily (9pm Colombian time)</option>
+          <option value="hourly">Hourly (at the start of every hour)</option>
+        </select>
+      </div>
+
+      <div v-if="frequencyResult" class="result-message" :class="frequencyResult.success ? 'success' : 'error'">
+        {{ frequencyResult.message }}
+      </div>
+    </section>
+
     <!-- Database Cleanup -->
     <section class="admin-section danger-zone">
       <h2>🗑️ Database Cleanup</h2>
@@ -117,6 +144,10 @@ const cleanupOptions = ref<CleanupOptions>({
 
 const cleanupResult = ref<CleanupResult | null>(null)
 
+const runFrequency = ref<string>('manual')
+const savingFrequency = ref(false)
+const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
+
 const hasSelectedOptions = computed(() => {
   return Object.values(cleanupOptions.value).some(v => v)
 })
@@ -129,6 +160,41 @@ const selectedOptionsText = computed(() => {
   if (cleanupOptions.value.clean_user_profiles) selected.push('⚠️ User Profiles')
   return selected.join(', ')
 })
+
+async function loadRunFrequency() {
+  try {
+    const response = await axios.get('/api/admin/settings/run-frequency')
+    runFrequency.value = response.data.frequency
+  } catch (error) {
+    console.error('Failed to load run frequency:', error)
+  }
+}
+
+async function saveRunFrequency() {
+  savingFrequency.value = true
+  frequencyResult.value = null
+
+  try {
+    await axios.post('/api/admin/settings/run-frequency', {
+      frequency: runFrequency.value
+    })
+    frequencyResult.value = {
+      success: true,
+      message: `✓ Run frequency set to: ${runFrequency.value}`
+    }
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      frequencyResult.value = null
+    }, 3000)
+  } catch (error: any) {
+    frequencyResult.value = {
+      success: false,
+      message: error.response?.data?.detail || 'Failed to save run frequency'
+    }
+  } finally {
+    savingFrequency.value = false
+  }
+}
 
 async function loadDatabaseStats() {
   loading.value = true
@@ -195,6 +261,7 @@ async function confirmCleanup() {
 let refreshInterval: number | null = null
 
 onMounted(() => {
+  loadRunFrequency()
   loadDatabaseStats()
   // Auto-refresh stats every 5 seconds
   refreshInterval = setInterval(() => {
@@ -233,6 +300,63 @@ h1 {
   margin-bottom: 1.5rem;
   color: #e0e0e0;
   font-size: 1.3rem;
+}
+
+/* Settings Section */
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label-text {
+  font-weight: 600;
+  color: #e0e0e0;
+  font-size: 1rem;
+}
+
+.label-description {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.setting-select {
+  padding: 0.75rem;
+  background: #2a2a2a;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  max-width: 400px;
+}
+
+.setting-select:hover:not(:disabled) {
+  border-color: #4a9eff;
+}
+
+.setting-select:focus {
+  outline: none;
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+}
+
+.setting-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setting-select option {
+  background: #2a2a2a;
+  color: #e0e0e0;
 }
 
 /* Database Stats Box */

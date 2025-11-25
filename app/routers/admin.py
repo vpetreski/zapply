@@ -1,6 +1,9 @@
 """Admin endpoints for database management."""
 
-from fastapi import APIRouter, Depends
+import json
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +11,9 @@ from sqlalchemy.schema import Sequence
 
 from app.database import get_db
 from app.models import ApplicationLog, Job, Run, UserProfile
+
+# Settings file path
+SETTINGS_FILE = Path("data/admin_settings.json")
 
 router = APIRouter()
 
@@ -150,3 +156,63 @@ async def get_database_stats(db: AsyncSession = Depends(get_db)) -> DatabaseStat
             stats[table_name] = 0
 
     return DatabaseStatsResponse(**stats)
+
+
+class RunFrequencyRequest(BaseModel):
+    """Request to set run frequency."""
+
+    frequency: str  # "manual", "daily", or "hourly"
+
+
+class RunFrequencyResponse(BaseModel):
+    """Response with current run frequency."""
+
+    frequency: str
+
+
+def _load_settings() -> dict:
+    """Load settings from JSON file."""
+    if not SETTINGS_FILE.exists():
+        return {"run_frequency": "manual"}
+
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {"run_frequency": "manual"}
+
+
+def _save_settings(settings: dict) -> None:
+    """Save settings to JSON file."""
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f, indent=2)
+
+
+@router.get("/settings/run-frequency", response_model=RunFrequencyResponse)
+async def get_run_frequency() -> RunFrequencyResponse:
+    """Get current run frequency setting."""
+    settings = _load_settings()
+    return RunFrequencyResponse(frequency=settings.get("run_frequency", "manual"))
+
+
+@router.post("/settings/run-frequency", response_model=RunFrequencyResponse)
+async def set_run_frequency(request: RunFrequencyRequest) -> RunFrequencyResponse:
+    """Set run frequency (manual, daily, or hourly)."""
+    # Validate frequency value
+    valid_frequencies = ["manual", "daily", "hourly"]
+    if request.frequency not in valid_frequencies:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}"
+        )
+
+    # Load, update, and save settings
+    settings = _load_settings()
+    settings["run_frequency"] = request.frequency
+    _save_settings(settings)
+
+    # TODO: Update scheduler based on new frequency
+    # This will be implemented when we add APScheduler
+
+    return RunFrequencyResponse(frequency=request.frequency)
