@@ -3,14 +3,39 @@
     <div class="jobs-header">
       <h2>Jobs ({{ total }} total)</h2>
       <div class="filters">
-        <select v-model="statusFilter" @change="resetAndFetch" class="filter-select">
-          <option value="">All Statuses</option>
-          <option value="new">New</option>
-          <option value="matched">Matched</option>
-          <option value="rejected">Rejected</option>
-          <option value="applied">Applied</option>
-          <option value="failed">Failed</option>
-        </select>
+        <div class="filter-group">
+          <label for="status-filter">Status:</label>
+          <select id="status-filter" v-model="statusFilter" @change="resetAndFetch" class="filter-select">
+            <option value="">All Statuses</option>
+            <option value="new">New</option>
+            <option value="matched">Matched</option>
+            <option value="rejected">Rejected</option>
+            <option value="applied">Applied</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="sort-by">Sort By:</label>
+          <select id="sort-by" v-model="sortBy" @change="resetAndFetch" class="filter-select">
+            <option value="date">Date</option>
+            <option value="match_score">Match Score</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="min-score">Min Score: {{ minScore }}</label>
+          <input
+            id="min-score"
+            type="range"
+            v-model.number="minScore"
+            @change="resetAndFetch"
+            min="0"
+            max="100"
+            step="5"
+            class="score-slider"
+          />
+        </div>
       </div>
     </div>
 
@@ -24,11 +49,19 @@
       <div class="jobs-list">
         <div v-for="job in jobs" :key="job.id" class="card job-card">
           <div class="job-header">
-            <div>
+            <div class="job-header-left">
               <h3 class="job-title" @click="openJobDetail(job)">{{ job.title }}</h3>
               <p class="company">{{ job.company }}</p>
             </div>
-            <span :class="['badge', `badge-${job.status}`]">{{ job.status }}</span>
+            <div class="job-header-right">
+              <span
+                v-if="job.match_score !== null && job.match_score !== undefined"
+                :class="['match-badge', getMatchScoreClass(job.match_score)]"
+              >
+                {{ job.match_score }}%
+              </span>
+              <span :class="['badge', `badge-${job.status}`]">{{ job.status }}</span>
+            </div>
           </div>
           <p class="job-description">{{ truncate(job.description, 200) }}</p>
           <div class="job-footer">
@@ -66,9 +99,20 @@
         <div class="modal-body">
           <div class="job-meta">
             <span :class="['badge', `badge-${selectedJob.status}`]">{{ selectedJob.status }}</span>
+            <span
+              v-if="selectedJob.match_score !== null && selectedJob.match_score !== undefined"
+              :class="['match-badge', 'match-badge-large', getMatchScoreClass(selectedJob.match_score)]"
+            >
+              {{ selectedJob.match_score }}% Match
+            </span>
             <span v-if="selectedJob.location" class="text-muted">📍 {{ selectedJob.location }}</span>
             <span v-if="selectedJob.source" class="text-muted">Source: {{ selectedJob.source }}</span>
             <span class="text-muted">🕐 {{ formatTimestamp(selectedJob.created_at) }}</span>
+          </div>
+
+          <div v-if="selectedJob.match_reasoning" class="job-section match-reasoning-section">
+            <h3>Match Reasoning</h3>
+            <div class="match-reasoning">{{ selectedJob.match_reasoning }}</div>
           </div>
 
           <div class="job-section">
@@ -86,16 +130,6 @@
             <div class="tags">
               <span v-for="tag in selectedJob.tags" :key="tag" class="tag">{{ tag }}</span>
             </div>
-          </div>
-
-          <div v-if="selectedJob.match_score" class="job-section">
-            <h3>Match Score</h3>
-            <div class="match-score">{{ selectedJob.match_score }}%</div>
-          </div>
-
-          <div v-if="selectedJob.match_reasoning" class="job-section">
-            <h3>Match Reasoning</h3>
-            <p>{{ selectedJob.match_reasoning }}</p>
           </div>
         </div>
 
@@ -116,6 +150,8 @@ const jobs = ref([])
 const loading = ref(true)
 const loadingMore = ref(false)
 const statusFilter = ref('')
+const sortBy = ref('date')
+const minScore = ref(0)
 const selectedJob = ref(null)
 
 // Infinite scroll
@@ -137,9 +173,25 @@ const fetchJobs = async (append = false) => {
       page: currentPage.value,
       page_size: pageSize.value
     }
+
     if (statusFilter.value) {
       params.status = statusFilter.value
     }
+
+    // Add sorting parameters
+    if (sortBy.value === 'match_score') {
+      params.sort_by = 'match_score'
+      params.sort_order = 'desc'
+    } else {
+      params.sort_by = 'created_at'
+      params.sort_order = 'desc'
+    }
+
+    // Add min score filter
+    if (minScore.value > 0) {
+      params.min_score = minScore.value
+    }
+
     const response = await axios.get('/api/jobs', { params })
 
     if (append) {
@@ -193,6 +245,13 @@ const truncate = (text, length) => {
   return text.substring(0, length) + '...'
 }
 
+const getMatchScoreClass = (score) => {
+  if (score >= 90) return 'match-excellent'
+  if (score >= 75) return 'match-good'
+  if (score >= 60) return 'match-fair'
+  return 'match-poor'
+}
+
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return ''
 
@@ -230,10 +289,31 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
 .jobs h2 {
   font-size: 2rem;
+}
+
+.filters {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.filter-group label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .filter-select {
@@ -243,6 +323,50 @@ onUnmounted(() => {
   border-radius: 0.375rem;
   color: var(--text);
   font-size: 0.875rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.filter-select:hover {
+  border-color: var(--primary);
+}
+
+.score-slider {
+  width: 120px;
+  height: 6px;
+  background: var(--bg-darker);
+  border-radius: 3px;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.score-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--primary);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.score-slider::-webkit-slider-thumb:hover {
+  background: var(--primary-light);
+}
+
+.score-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--primary);
+  cursor: pointer;
+  border-radius: 50%;
+  border: none;
+  transition: background 0.2s;
+}
+
+.score-slider::-moz-range-thumb:hover {
+  background: var(--primary-light);
 }
 
 .loading, .empty {
@@ -271,6 +395,18 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.job-header-left {
+  flex: 1;
+}
+
+.job-header-right {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  flex-shrink: 0;
 }
 
 .job-header h3 {
@@ -290,6 +426,43 @@ onUnmounted(() => {
 .company {
   color: var(--text-muted);
   font-size: 0.875rem;
+}
+
+/* Match Score Badges */
+.match-badge {
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: center;
+  min-width: 55px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.match-badge-large {
+  font-size: 1rem;
+  padding: 0.5rem 1rem;
+  min-width: 80px;
+}
+
+.match-excellent {
+  background-color: #10b981;
+  color: #ffffff;
+}
+
+.match-good {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.match-fair {
+  background-color: #f59e0b;
+  color: #ffffff;
+}
+
+.match-poor {
+  background-color: #ef4444;
+  color: #ffffff;
 }
 
 .job-description {
@@ -430,6 +603,19 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
+.match-reasoning-section {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-left: 4px solid #3b82f6;
+  padding: 1rem;
+  border-radius: 0.375rem;
+}
+
+.match-reasoning {
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
 .tags {
   display: flex;
   flex-wrap: wrap;
@@ -444,17 +630,41 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-.match-score {
-  font-size: 2rem;
-  font-weight: bold;
-  color: var(--primary);
-}
-
 .modal-footer {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
   padding: 1.5rem;
   border-top: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+  .jobs-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .filters {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-group {
+    width: 100%;
+  }
+
+  .score-slider {
+    width: 100%;
+  }
+
+  .job-header {
+    flex-direction: column;
+  }
+
+  .job-header-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 </style>

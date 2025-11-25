@@ -18,11 +18,14 @@ async def list_jobs(
     status: Optional[str] = Query(None, description="Filter by job status"),
     source: Optional[str] = Query(None, description="Filter by job source"),
     company: Optional[str] = Query(None, description="Filter by company name"),
+    min_score: Optional[float] = Query(None, ge=0, le=100, description="Minimum match score"),
+    sort_by: str = Query("created_at", description="Sort field (created_at, match_score)"),
+    sort_order: str = Query("desc", description="Sort order (asc, desc)"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     db: AsyncSession = Depends(get_db),
 ) -> JobListResponse:
-    """List jobs with optional filtering and pagination."""
+    """List jobs with optional filtering, sorting, and pagination."""
     # Build query
     query = select(Job)
 
@@ -32,13 +35,28 @@ async def list_jobs(
         query = query.filter(Job.source == source)
     if company:
         query = query.filter(Job.company.ilike(f"%{company}%"))
+    if min_score is not None:
+        query = query.filter(Job.match_score >= min_score)
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar_one()
 
+    # Apply sorting
+    if sort_by == "match_score":
+        # Sort by match score (nulls last)
+        if sort_order == "desc":
+            query = query.order_by(Job.match_score.desc().nullslast())
+        else:
+            query = query.order_by(Job.match_score.asc().nullslast())
+    else:
+        # Default: sort by created_at
+        if sort_order == "desc":
+            query = query.order_by(Job.created_at.desc())
+        else:
+            query = query.order_by(Job.created_at.asc())
+
     # Apply pagination
-    query = query.order_by(Job.created_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     # Execute query
