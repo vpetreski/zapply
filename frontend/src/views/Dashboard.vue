@@ -206,10 +206,11 @@ onUnmounted(() => {
 
 .auto-refresh-indicator {
   font-size: 0.85rem;
-  color: #4a9eff;
+  color: #10b981;
   font-weight: 500;
   cursor: default;
   user-select: none;
+  text-decoration: none;
 }
 
 .recent-activity {
