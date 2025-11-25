@@ -59,7 +59,7 @@ You are the primary development assistant for this project. Your responsibilitie
 - **Rate**: $10,000 USD/month (or equivalent)
 - **Core Skills**: Java, Kotlin, Spring Boot, Backend, APIs, Architecture, Tech Leadership
 - **Extended Skills**: Python, FastAPI, Go, Node, TypeScript, mobile, frontend
-- **CV**: Available at `docs/Resume-Vanja-Petreski.pdf`
+- **Profile Management**: User profile is managed through the `/profile` UI page with AI-powered generation
 
 ## Architecture Guidelines
 
@@ -76,7 +76,7 @@ You are the primary development assistant for this project. Your responsibilitie
 2. **Matcher**
    - Triggered when new jobs detected
    - Use Claude API for intelligent matching
-   - Input: CV PDF + job description + filtering criteria
+   - Input: User profile (from database) + job description + filtering criteria
    - Output: MATCHED/REJECTED status with reasoning
    - Be cost-efficient with API calls
 
@@ -108,7 +108,7 @@ Design tables to track:
 - Jobs (id, source, url, title, company, description, requirements, raw_data, timestamps)
 - Job statuses (new, matched, rejected, applied, failed, reported)
 - Application results (success/failure, error messages, screenshots if needed)
-- User profile (CV, preferences, configuration)
+- User profile (name, email, location, rate, cv_text, skills, preferences - managed via UI)
 
 ## Code Style
 

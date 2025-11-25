@@ -7,6 +7,8 @@
         <RouterLink to="/jobs">Jobs</RouterLink>
         <RouterLink to="/runs">Runs</RouterLink>
         <RouterLink to="/stats">Statistics</RouterLink>
+        <RouterLink to="/profile">Profile</RouterLink>
+        <RouterLink to="/settings">Settings</RouterLink>
       </nav>
     </header>
     <main class="main">

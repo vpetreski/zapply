@@ -3,13 +3,19 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app import __version__
 from app.config import settings
 from app.database import engine
-from app.routers import health, jobs, runs, scraper, stats
+from app.routers import admin, health, jobs, profile, runs, scraper, stats
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -36,6 +42,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
@@ -51,6 +61,8 @@ app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(runs.router, tags=["Runs"])
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
+app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 
 @app.get("/")

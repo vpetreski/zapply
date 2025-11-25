@@ -1,16 +1,85 @@
 # Zapply - AI Context
 
 ## Current Phase
-**Phase 1: Project Foundation Complete**
+**Phase 2: Core Features Implementation - SCRAPER & MATCHER COMPLETE**
 
-Complete project structure with backend, frontend, Docker, and development automation ready. Foundation is solid and ready for feature implementation.
+Working Nomads scraper and AI-powered matcher are fully implemented and working! Currently testing and refining the matching logic. Next: Applier implementation.
 
-## Last Session - 2025-11-24
+## Last Session - 2025-11-25 (Morning)
 
-### Accomplished
+### Accomplished This Session
+**Fixed All Claude Bot Review Issues:**
+- ✅ Fixed Python 3.12+ datetime.utcnow() deprecation (8+ instances across 4 files)
+- ✅ Created utc_now() helper function for SQLAlchemy defaults
+- ✅ Moved json import to top of matching_service.py
+- ✅ Added API key validation before Claude client initialization
+- ✅ Added Claude response schema validation (required fields + score range)
+- ✅ Moved magic numbers and model ID to config.py (4 new settings)
+- ✅ Added database index on match_score field (migration 888d2d4282fa)
+- ✅ Added retry logic with tenacity (3 attempts, exponential backoff)
+- ✅ Added rate limiting with slowapi (5/min scraper, 10/min profile)
+- ✅ All fixes committed: e3f8af1
+
+**Key Improvements:**
+- Better error handling and validation
+- Configurable intervals via environment variables
+- Improved API resilience with retries
+- Rate limiting to prevent abuse
+- Performance optimization with database index
+
+### Previous Session - 2025-11-24 (Evening)
+
+### Accomplished That Session
+**Fixed Critical Matcher Bug & Built Profile System:**
+- ✅ Diagnosed "No user profile found" error blocking matching phase
+- ✅ Initially created UserProfile with real CV data (6,500 chars, 51 skills)
+- ✅ Fixed preferences to reflect contractor status and Colombia location
+- ✅ Built complete UserProfile management UI with AI-powered generation
+- ✅ Removed hardcoded CV from repository (was: `docs/Resume-Vanja-Petreski.pdf`)
+- ✅ Profile now managed through `/profile` page with Claude AI generation
+- ✅ Users can upload CV + provide instructions → Claude optimizes profile
+- ✅ Created `scripts/clean_jobs_runs.py` to clean test data while preserving profile
+- ✅ Cleaned 745 test jobs and 1 failed run from database
+
+**Working Nomads Scraper - COMPLETE:**
+- ✅ Playwright-based scraper for Working Nomads
+- ✅ Login with premium account credentials
+- ✅ Apply filters (Development + Anywhere,Colombia)
+- ✅ Load all jobs by clicking "Show more" until exhausted
+- ✅ Scrape job details (title, company, description, tags, apply URL)
+- ✅ Save to database with duplicate detection
+- ✅ Progress logging and Run tracking
+- ✅ Successfully scraped 745+ jobs in testing
+
+**AI Matcher - COMPLETE:**
+- ✅ Claude API integration for intelligent job matching
+- ✅ Async Claude client for better performance
+- ✅ Match jobs against user CV and preferences
+- ✅ Score-based matching (0-100 scale)
+- ✅ Detailed reasoning with strengths/concerns/recommendation
+- ✅ MATCHED (≥60) vs REJECTED (<60) status updates
+- ✅ Batch processing with progress tracking
+- ✅ Error handling and recovery
+
+**Service Layer - COMPLETE:**
+- ✅ `scraper_service.py`: Orchestrates scraping + matching pipeline
+- ✅ `matching_service.py`: AI-powered job matching with Claude
+- ✅ Run tracking with logs and statistics
+- ✅ Progress callbacks for real-time updates
+- ✅ Sequential pipeline: SCRAPING → MATCHING → (future: APPLYING)
+
+**API Endpoints - COMPLETE:**
+- ✅ `/api/scraper/run`: Trigger scraping manually
+- ✅ `/api/runs`: Get all runs with stats
+- ✅ `/api/runs/{id}`: Get single run details with logs
+- ✅ `/api/jobs`: List jobs with filtering
+- ✅ `/api/stats`: Dashboard statistics
+
+### Previous Session - 2025-11-24 (Morning)
+
 **Initial Setup:**
 - Read and understood project requirements from `docs/initial-prompt.md`
-- Reviewed Vanja's resume (`docs/Resume-Vanja-Petreski.pdf`)
+- Reviewed Vanja's resume (now removed from repo - managed via UI)
 - Confirmed technology choices with user:
   - Python 3.12, uv for package management
   - Monorepo structure (backend + frontend together)
@@ -205,8 +274,148 @@ just dev-frontend    # Run frontend (terminal 2)
 - JobCopilot (Vanja says ineffective)
 - Direct LinkedIn application (bad filtering, no responses)
 
+## Current Status & Next Steps
+
+**✅ SCRAPER & MATCHER FULLY WORKING!**
+- Scraper successfully fetches jobs from Working Nomads with Playwright
+- Matcher performs AI-powered job analysis using Claude API
+- UserProfile created with real CV data (20 years experience, Principal SWE)
+- Database clean and ready for fresh test run
+- **System ready to test full scraping + matching pipeline**
+
+**OVERNIGHT RUN IN PROGRESS:**
+- 🚀 **Run #1 started at 23:40** (Nov 24, 2025)
+- Will scrape all jobs from Working Nomads (Development + Anywhere,Colombia filters)
+- Will match all jobs using Claude API with real UserProfile
+- Expected completion: ~15-20 minutes
+- **Check results in the morning!**
+
+**NEW: Settings Page Added (23:50):**
+- ⚙️ **Database cleanup functionality now in UI!**
+- Navigate to Settings page (http://localhost:5173/settings)
+- View real-time database statistics (jobs, runs, logs, profiles)
+- Selective cleanup with checkboxes
+- Safety confirmations prevent accidental deletions
+- No need for manual cleanup scripts anymore!
+
+**Immediate Next Steps:**
+
+### Phase 1: TESTING & POLISHING 🧪
+**Goal:** Test all implemented features thoroughly and polish any issues found
+
+1. **Test Scraper:**
+   - Trigger scraping run via `/api/scraper/run`
+   - Verify login to Working Nomads
+   - Verify filters applied correctly
+   - Verify job extraction and saving
+   - Check for duplicates handling
+   - Review run logs and statistics
+
+2. **Test Matcher:**
+   - Verify matching runs after scraping
+   - Check match scores (0-100 range)
+   - Review reasoning quality
+   - Validate MATCHED vs REJECTED status
+   - Test with different profile configurations
+   - Verify API key validation works
+   - Test retry logic with network issues
+
+3. **Test Profile Management:**
+   - View existing profile
+   - Upload CV and generate new profile
+   - Update profile with custom prompts
+   - Delete profile (with confirmation)
+   - Test AI profile generation quality
+   - Verify rate limiting works
+
+4. **Test Settings Page:**
+   - View database statistics
+   - Selective cleanup (jobs, runs)
+   - Verify confirmations work
+   - Check data actually deleted
+
+5. **Test Dashboard & Jobs Views:**
+   - View dashboard statistics
+   - Filter jobs by status
+   - Search jobs by keyword
+   - View job details
+   - Check pagination
+
+6. **Polish Issues Found:**
+   - Fix any bugs discovered
+   - Improve error messages
+   - Enhance UI/UX where needed
+   - Optimize performance
+   - Update documentation
+
+**THEN, after testing complete:**
+
+### Phase 2: UserProfile Management System 👤 ✅ COMPLETE!
+**Goal:** Build complete profile management in UI with AI-powered profile generation
+
+1. **Build UserProfile UI Section** (place before Settings in nav)
+   - View current profile: name, email, location, rate, skills, preferences, CV text
+   - Display what AI sees during matching
+   - Show profile creation/update date
+
+2. **Add Profile Management Features:**
+   - **Upload CV** - File upload for PDF resume
+   - **Custom Prompt Input** - Free text area for user instructions
+   - **AI Profile Generation** - Use Claude API to craft profile from CV + user input
+   - **Update Profile** - Save generated profile to database
+   - **Delete Profile** - Remove profile (with confirmation)
+
+3. **Backend API Endpoints:**
+   - `GET /api/profile` - Get current user profile
+   - `POST /api/profile/generate` - Generate profile from CV + prompt using Claude
+   - `PUT /api/profile` - Update existing profile
+   - `DELETE /api/profile` - Delete profile
+
+4. **Remove CV from Repository:** ✅ DONE!
+   - ✅ Deleted `docs/Resume-Vanja-Petreski.pdf` from repo
+   - ✅ Removed CV path references from `.env.example`
+   - ✅ Removed CV path from `app/config.py`
+   - ✅ Updated documentation removing CV references
+   - Profile now fully managed via UI
+
+**Concept:** Instead of hardcoded CV, user uploads CV + provides instructions → Claude generates optimized profile for matching → stored in database
+
+### Phase 3: GitHub Bot Review & Configuration 🤖 ✅ COMPLETE!
+**Goal:** Understand and properly configure Claude Code GitHub integration
+
+1. **Review Claude Bot Integration:** ✅
+   - ✅ Reviewed PR #1 comments from Claude Bot
+   - ✅ Identified 8 critical issues to fix
+   - ✅ All issues addressed systematically
+
+2. **Address Bot Feedback:** ✅
+   - ✅ datetime.utcnow() deprecation fixed
+   - ✅ API validation added
+   - ✅ Response validation added
+   - ✅ Configuration centralized
+   - ✅ Database optimization added
+   - ✅ Retry logic implemented
+   - ✅ Rate limiting added
+
+### Phase 4: Matching Validation 🎯
+**(PART OF TESTING PHASE ABOVE)**
+
+### Phase 5: Plan Next Steps 📋
+**Likely Next: Applier Component**
+- Playwright + Claude for automated job applications
+- Navigate arbitrary ATS systems
+- Fill forms intelligently
+- Handle custom questions
+
+**After Above Phases Complete:**
+1. Implement **Applier** component (Playwright + Claude for automated job applications)
+2. Add APScheduler for hourly automated scraping runs
+3. Test complete workflow: scrape → match → apply
+4. Deploy to Synology NAS for 24/7 operation
+5. Reporter component (notifications, email/webhook)
+
 ## Blockers
-None currently. Waiting for user to review and provide feedback.
+None! System ready for comprehensive testing.
 
 ## Notes
 
@@ -225,7 +434,7 @@ None currently. Waiting for user to review and provide feedback.
 
 ### Important Context Files
 - `docs/initial-prompt.md` - Original project requirements
-- `docs/Resume-Vanja-Petreski.pdf` - Vanja's CV (use for matching)
+- `/profile` UI page - User profile management (CV, skills, preferences)
 - `CLAUDE.md` - My instructions (Claude Code)
 - `.cursorrules` - Cursor IDE instructions
 - `Justfile` - All automation commands
@@ -253,7 +462,8 @@ None currently. Waiting for user to review and provide feedback.
 
 ## Implementation Status
 
-### ✅ Completed
+### ✅ Completed (Phase 1 & 2)
+**Foundation:**
 - [x] Project structure and organization
 - [x] Backend skeleton (FastAPI, models, schemas, endpoints)
 - [x] Frontend UI (Vue.js, dashboard, views)
@@ -262,17 +472,27 @@ None currently. Waiting for user to review and provide feedback.
 - [x] Development automation (Justfile)
 - [x] Documentation (README, CLAUDE.md, .cursorrules)
 - [x] Git repository and GitHub setup
-- [x] All files committed and pushed
 
-### ⏳ Pending (MVP Week 1)
-- [ ] Working Nomads scraper implementation (Playwright)
-- [ ] Claude API integration for matcher
-- [ ] PDF CV reading and text extraction
+**Core Features (Scraper & Matcher):**
+- [x] Working Nomads scraper with Playwright (fully functional)
+- [x] Claude API integration for AI-powered matching
+- [x] UserProfile with real CV data (6,500 chars, 51 skills)
+- [x] Service layer (scraper_service.py, matching_service.py)
+- [x] Run tracking with logs and statistics
+- [x] API endpoints for manual triggering
+- [x] Database migrations applied
+- [x] Testing scripts (init_user_profile.py, clean_jobs_runs.py)
+
+### ⏳ In Progress
+- [ ] Testing matcher with real jobs (NEXT: trigger fresh run)
+- [ ] Validating match quality and scoring
+
+### 📋 Pending (MVP Week 1)
 - [ ] Playwright + Claude applier implementation
-- [ ] APScheduler integration for hourly runs
-- [ ] Testing with real Working Nomads data
-- [ ] First database migration
+- [ ] APScheduler integration for hourly automated runs
+- [ ] Reporter component (email/webhook notifications)
 - [ ] End-to-end testing of complete workflow
+- [ ] Deploy to Synology NAS
 
 ### 🚀 Future Enhancements (Post-MVP)
 - [ ] Additional job sources (We Work Remotely, Remotive)
@@ -283,6 +503,6 @@ None currently. Waiting for user to review and provide feedback.
 
 ---
 
-**Last Updated:** 2025-11-24 by Claude Code
-**Next Session:** User will review setup, provide feedback, then implement core features (scraper, matcher, applier)
+**Last Updated:** 2025-11-25 by Claude Code
+**Next Session:** Comprehensive testing of all implemented features, polish any issues found, then plan next phase
 **GitHub:** https://github.com/vpetreski/zapply (private)

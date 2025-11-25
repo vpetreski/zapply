@@ -1,4 +1,4 @@
-"""Clean all data from the database for fresh start."""
+"""Clean jobs and runs from database but keep user profile."""
 
 import asyncio
 import sys
@@ -12,31 +12,31 @@ from sqlalchemy import text
 from app.database import async_session_maker
 
 
-async def clean_database():
-    """Drop all data from all tables."""
+async def clean_jobs_and_runs():
+    """Delete jobs and runs, but keep user profile."""
     async with async_session_maker() as db:
-        print("🧹 Cleaning database...")
+        print("🧹 Cleaning jobs and runs from database...")
 
-        # List of tables to clean (in order to respect foreign keys)
+        # List of tables to clean (keep user_profiles!)
         tables = [
             "application_logs",
-            "runs",  # Runs has embedded logs, no separate table
+            "runs",
             "jobs",
-            "user_profiles",
         ]
 
         for table in tables:
             try:
+                result = await db.execute(text(f"SELECT COUNT(*) FROM {table}"))
+                count = result.scalar()
                 await db.execute(text(f"DELETE FROM {table}"))
-                print(f"  ✅ Deleted {table}")
+                print(f"  ✅ Deleted {count} rows from {table}")
             except Exception as e:
-                print(f"  ⚠️  Skipped {table} (doesn't exist or error)")
+                print(f"  ⚠️  Error cleaning {table}: {e}")
 
         # Reset sequences (auto-increment counters)
         sequences = [
             "jobs_id_seq",
             "runs_id_seq",
-            "user_profiles_id_seq",
             "application_logs_id_seq",
         ]
 
@@ -50,11 +50,9 @@ async def clean_database():
 
         await db.commit()
 
-        print("\n✨ Database is now clean!")
-        print("\nNext steps:")
-        print("  1. Run: uv run python scripts/init_user_profile.py")
-        print("  2. Start a new scraping run")
+        print("\n✨ Database cleaned! User profile preserved.")
+        print("\nYou can now trigger a new scraping run.")
 
 
 if __name__ == "__main__":
-    asyncio.run(clean_database())
+    asyncio.run(clean_jobs_and_runs())

@@ -1,6 +1,6 @@
-"""Scraper service to handle job scraping and saving to database."""
+"""Scraper service to handle job scraping, matching, and saving to database."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Job, Run, RunPhase, RunStatus
 from app.schemas import JobCreate
 from app.scraper import WorkingNomadsScraper
+from app.services.matching_service import match_jobs
 
 
 def add_log(run: Run, message: str, level: str = "info") -> None:
@@ -16,7 +17,7 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
         run.logs = []
 
     run.logs.append({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "level": level,
         "message": message
     })
@@ -41,7 +42,7 @@ async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
         status=RunStatus.RUNNING.value,
         phase=RunPhase.SCRAPING.value,
         logs=[],
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
     )
     db.add(run)
     await db.commit()
@@ -126,36 +127,67 @@ async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
         # Commit all changes
         await db.commit()
 
-        # Complete the run
-        run.status = RunStatus.COMPLETED.value
-        run.completed_at = datetime.utcnow()
-        run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
-        run.stats = {
-            "jobs_scraped": stats["total"],
-            "new_jobs": stats["new"],
-            "duplicate_jobs": stats["existing"],
-            "failed_jobs": stats["failed"],
-            "source": "working_nomads",
-            "filters": {
-                "category": "development",
-                "location": "anywhere,colombia"
-            }
-        }
-
-        add_log(run, f"Scraping completed successfully!", "success")
+        add_log(run, f"Scraping phase completed successfully!", "success")
         add_log(run, f"Total: {stats['total']}, New: {stats['new']}, Duplicates: {stats['existing']}, Failed: {stats['failed']}", "info")
         await db.commit()
 
-        print(f"\n📊 Summary:")
+        print(f"\n📊 Scraping Summary:")
         print(f"  Total scraped: {stats['total']}")
         print(f"  New jobs saved: {stats['new']}")
         print(f"  Already existed: {stats['existing']}")
         print(f"  Failed: {stats['failed']}")
 
+        # Phase 2: Match jobs with AI
+        if stats["new"] > 0:
+            print(f"\n🤖 Starting AI matching phase...")
+            run.phase = RunPhase.MATCHING.value
+            await db.commit()
+
+            matching_stats = await match_jobs(db, run)
+
+            # Update run stats with matching results
+            run.stats = {
+                "jobs_scraped": stats["total"],
+                "new_jobs": stats["new"],
+                "duplicate_jobs": stats["existing"],
+                "failed_jobs": stats["failed"],
+                "jobs_matched": matching_stats["matched"],
+                "jobs_rejected": matching_stats["rejected"],
+                "matching_errors": matching_stats["errors"],
+                "average_match_score": matching_stats["average_score"],
+                "source": "working_nomads",
+                "filters": {
+                    "category": "development",
+                    "location": "anywhere,colombia"
+                }
+            }
+            await db.commit()
+        else:
+            print(f"\n⏭️  No new jobs to match, skipping matching phase")
+            run.stats = {
+                "jobs_scraped": stats["total"],
+                "new_jobs": stats["new"],
+                "duplicate_jobs": stats["existing"],
+                "failed_jobs": stats["failed"],
+                "source": "working_nomads",
+                "filters": {
+                    "category": "development",
+                    "location": "anywhere,colombia"
+                }
+            }
+            await db.commit()
+
+        # Complete the run
+        run.status = RunStatus.COMPLETED.value
+        run.completed_at = datetime.now(timezone.utc)
+        run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
+        add_log(run, f"Run completed successfully!", "success")
+        await db.commit()
+
     except Exception as e:
         # Handle errors
         run.status = RunStatus.FAILED.value
-        run.completed_at = datetime.utcnow()
+        run.completed_at = datetime.now(timezone.utc)
         run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
         run.error_message = str(e)
         add_log(run, f"Scraping failed: {str(e)}", "error")

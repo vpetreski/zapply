@@ -1,6 +1,6 @@
 """Database models for Zapply."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -8,6 +8,11 @@ from sqlalchemy import JSON, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+
+
+def utc_now():
+    """Get current UTC time - helper for SQLAlchemy default."""
+    return datetime.now(timezone.utc)
 
 
 class JobStatus(str, Enum):
@@ -68,10 +73,10 @@ class Job(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, index=True
+        DateTime, nullable=False, default=utc_now, index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
     matched_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -102,9 +107,9 @@ class UserProfile(Base):
     preferences: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
 
     def __repr__(self) -> str:
@@ -130,7 +135,7 @@ class ApplicationLog(Base):
     ai_responses: Mapped[Optional[list]] = mapped_column(JSON)
 
     # Timing
-    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     duration_seconds: Mapped[Optional[float]] = mapped_column()
 
@@ -178,7 +183,7 @@ class Run(Base):
 
     # Timing
     started_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, index=True
+        DateTime, nullable=False, default=utc_now, index=True
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     duration_seconds: Mapped[Optional[float]] = mapped_column()
