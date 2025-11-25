@@ -200,8 +200,25 @@ Respond in this exact JSON format:
 
         # Parse response
         import json
+        import re
         response_text = message.content[0].text
-        profile_data = json.loads(response_text)
+
+        # Extract JSON from response (may be wrapped in markdown code blocks)
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # Try to find raw JSON if no code blocks
+            json_str = response_text.strip()
+
+        try:
+            profile_data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            # Log the actual response for debugging
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to parse Claude response as JSON: {str(e)}. Response: {response_text[:500]}"
+            )
 
         return GenerateProfileResponse(
             cv_text=profile_data["cv_text"],
@@ -210,6 +227,8 @@ Respond in this exact JSON format:
             generated_summary=profile_data["generated_summary"]
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
