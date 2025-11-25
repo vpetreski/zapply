@@ -43,16 +43,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         log_to_console("⚠️  ANTHROPIC_API_KEY not configured - AI matching will not work")
     else:
         logger.info("✓ Anthropic API key configured")
-        # Show key length and first/last chars for debugging
-        api_key = settings.anthropic_api_key
-        key_len = len(api_key)
-        if key_len > 12:
-            key_preview = f"{api_key[:20]}...{api_key[-4:]}"
-        else:
-            key_preview = "TOO_SHORT"
-        log_to_console(f"✓ Anthropic API key configured (length: {key_len}): {key_preview}")
-        log_to_console(f"✓ API key has whitespace: {api_key != api_key.strip()}")
-        log_to_console(f"✓ Anthropic model: {settings.anthropic_model}")
+        logger.info(f"✓ API key length: {len(settings.anthropic_api_key)} characters")
+        logger.info(f"✓ Anthropic model: {settings.anthropic_model}")
 
     # Start scheduler
     try:

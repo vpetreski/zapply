@@ -12,7 +12,7 @@ from app.database import Base
 
 def utc_now():
     """Get current UTC time - helper for SQLAlchemy default."""
-    return datetime.utcnow()  # Returns timezone-naive UTC time for PostgreSQL compatibility
+    return datetime.now(timezone.utc).replace(tzinfo=None)  # Returns timezone-naive UTC time for PostgreSQL compatibility
 
 
 class JobStatus(str, Enum):

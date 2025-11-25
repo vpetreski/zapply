@@ -27,7 +27,7 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
         run.logs = []
 
     run.logs.append({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         "level": level,
         "message": message
     })
@@ -69,7 +69,7 @@ async def scrape_and_save_jobs(
         phase=RunPhase.SCRAPING.value,
         trigger_type=trigger_type,
         logs=[],
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(run)
     await db.commit()
@@ -220,7 +220,7 @@ async def scrape_and_save_jobs(
 
         # Complete the run
         run.status = RunStatus.COMPLETED.value
-        run.completed_at = datetime.utcnow()
+        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
         add_log(run, f"Run completed successfully!", "success")
         await db.commit()
@@ -228,7 +228,7 @@ async def scrape_and_save_jobs(
     except Exception as e:
         # Handle errors
         run.status = RunStatus.FAILED.value
-        run.completed_at = datetime.utcnow()
+        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
         run.error_message = str(e)
         add_log(run, f"Scraping failed: {str(e)}", "error")

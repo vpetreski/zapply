@@ -23,7 +23,7 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
         run.logs = []
 
     run.logs.append({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         "level": level,
         "message": message
     })
@@ -237,14 +237,8 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
             await db.commit()
             raise ValueError("Missing Anthropic API key - set ANTHROPIC_API_KEY in .env")
 
-        # Debug: Show API key details
-        api_key = settings.anthropic_api_key
-        logger.info(f"🔑 API Key Debug:")
-        logger.info(f"   Length: {len(api_key)}")
-        logger.info(f"   First 20 chars: {api_key[:20]}")
-        logger.info(f"   Last 4 chars: ...{api_key[-4:]}")
-        logger.info(f"   Has whitespace: {api_key != api_key.strip()}")
-        logger.info(f"   Stripped length: {len(api_key.strip())}")
+        # Validate API key format
+        logger.info(f"🔑 API Key validated (length: {len(settings.anthropic_api_key)} characters)")
 
         # Initialize async Claude client
         logger.info(f"🤖 Initializing Claude AI client (model: {settings.anthropic_model})...")
@@ -271,7 +265,7 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
                 # Update job with match results
                 job.match_score = score
                 job.match_reasoning = reasoning
-                job.matched_at = datetime.utcnow()
+                job.matched_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
                 total_score += score
 
