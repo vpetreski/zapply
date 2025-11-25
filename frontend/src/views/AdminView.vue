@@ -330,8 +330,11 @@ h1 {
 
 .setting-select {
   padding: 0.75rem;
-  padding-right: 3rem !important; /* Extra right padding for dropdown arrow */
-  background: #2a2a2a;
+  padding-right: 3rem !important;
+  background-color: #2a2a2a;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
   border: 1px solid #404040;
   border-radius: 4px;
   color: #e0e0e0;
@@ -339,8 +342,9 @@ h1 {
   cursor: pointer;
   transition: border-color 0.2s;
   max-width: 400px;
-  background-position: right 0.75rem center !important; /* Position arrow with padding */
-  background-repeat: no-repeat !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
 
 .setting-select:hover:not(:disabled) {
