@@ -161,6 +161,14 @@ class RunPhase(str, Enum):
     REPORTING = "reporting"
 
 
+class RunTriggerType(str, Enum):
+    """How a run was triggered."""
+
+    MANUAL = "manual"
+    SCHEDULED_DAILY = "scheduled_daily"
+    SCHEDULED_HOURLY = "scheduled_hourly"
+
+
 class Run(Base):
     """Track each execution run of the automation pipeline."""
 
@@ -174,6 +182,9 @@ class Run(Base):
     )
     phase: Mapped[str] = mapped_column(
         String(20), nullable=False, index=True
+    )
+    trigger_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=RunTriggerType.MANUAL.value, index=True
     )
 
     # Statistics and logs

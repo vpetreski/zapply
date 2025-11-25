@@ -46,6 +46,7 @@
               <div class="run-meta">
                 <span :class="['badge', `badge-${run.status}`]">{{ run.status }}</span>
                 <span :class="['badge', `badge-phase-${run.phase}`]">{{ run.phase }}</span>
+                <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(run.trigger_type) }}</span>
               </div>
             </div>
             <div class="run-times">
@@ -92,6 +93,7 @@
             <div class="run-meta">
               <span :class="['badge', `badge-${selectedRun.status}`]">{{ selectedRun.status }}</span>
               <span :class="['badge', `badge-phase-${selectedRun.phase}`]">{{ selectedRun.phase }}</span>
+              <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(selectedRun.trigger_type) }}</span>
             </div>
           </div>
           <button @click="closeRunDetail" class="btn-close">×</button>
@@ -325,6 +327,18 @@ const formatStatKey = (key) => {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+const formatTriggerType = (triggerType) => {
+  if (!triggerType) return 'Manual'
+
+  const typeMap = {
+    'manual': 'Manual',
+    'scheduled_daily': 'Daily',
+    'scheduled_hourly': 'Hourly'
+  }
+
+  return typeMap[triggerType] || triggerType
 }
 
 const formatLogTime = (timestamp) => {
@@ -604,6 +618,12 @@ onUnmounted(() => {
 .badge-phase-reporting {
   background-color: rgba(251, 191, 36, 0.2);
   color: #fcd34d;
+}
+
+/* Trigger type badge */
+.badge-trigger {
+  background-color: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
 }
 
 /* Infinite Scroll */

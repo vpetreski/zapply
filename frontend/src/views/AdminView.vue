@@ -9,7 +9,7 @@
       <div class="setting-item">
         <label for="run-frequency" class="setting-label">
           <span class="label-text">Run Frequency</span>
-          <span class="label-description">Configure how often the job scraper runs automatically</span>
+          <span class="label-description">Configure how often the automation pipeline runs (scraping, matching, applying)</span>
         </label>
         <select
           id="run-frequency"
