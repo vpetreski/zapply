@@ -261,7 +261,21 @@ just dev-frontend    # Run frontend (terminal 2)
 - Database clean and ready for fresh test run
 - **System ready to test full scraping + matching pipeline**
 
+**OVERNIGHT RUN IN PROGRESS:**
+- 🚀 **Run #1 started at 23:40** (Nov 24, 2025)
+- Will scrape all jobs from Working Nomads (Development + Anywhere,Colombia filters)
+- Will match all jobs using Claude API with real UserProfile
+- Expected completion: ~15-20 minutes
+- **Check results in the morning!**
+
 **Immediate Next Steps (Tomorrow Morning):**
+0. **Review overnight Run #1 results:**
+   - Check run status: `GET /api/runs/1`
+   - View matched jobs: `GET /api/jobs?status=matched`
+   - Check match scores and reasoning
+   - See how many jobs matched vs rejected
+   - Validate matching quality before proceeding
+
 1. **Test Claude Code GitHub integration:**
    - Check if Claude Code GitHub Actions are working properly
    - Verify PR assistant and code review workflows
