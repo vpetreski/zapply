@@ -131,8 +131,8 @@ async def get_profile(db: AsyncSession = Depends(get_db)) -> Optional[ProfileRes
 @router.post("/generate", response_model=GenerateProfileResponse)
 @limiter.limit("10/minute")
 async def generate_profile(
-    http_request: Request,
-    request: GenerateProfileRequest,
+    request: Request,
+    profile_request: GenerateProfileRequest,
     db: AsyncSession = Depends(get_db)
 ) -> GenerateProfileResponse:
     """
@@ -148,17 +148,17 @@ async def generate_profile(
     prompt = f"""You are an expert career advisor helping to create an optimized job seeker profile.
 
 **INPUT CV:**
-{request.cv_text}
+{profile_request.cv_text}
 
 **CUSTOM INSTRUCTIONS FROM USER:**
-{request.custom_instructions}
+{profile_request.custom_instructions}
 
 **USER DETAILS:**
-- Name: {request.name}
-- Email: {request.email}
-- Phone: {request.phone or 'Not provided'}
-- Location: {request.location}
-- Rate: {request.rate}
+- Name: {profile_request.name}
+- Email: {profile_request.email}
+- Phone: {profile_request.phone or 'Not provided'}
+- Location: {profile_request.location}
+- Rate: {profile_request.rate}
 
 **YOUR TASK:**
 Analyze the CV and custom instructions to create an optimized profile for AI-powered job matching.
@@ -176,8 +176,8 @@ Respond in this exact JSON format:
   "cv_text": "<optimized profile text - comprehensive, well-structured, highlights key strengths>",
   "skills": ["skill1", "skill2", ...],
   "preferences": {{
-    "rate": "{request.rate}",
-    "location": "{request.location}",
+    "rate": "{profile_request.rate}",
+    "location": "{profile_request.location}",
     "key_requirements": ["requirement1", "requirement2", ...],
     "preferred_industries": ["Industry1", "Industry2", ...],
     "preferred_roles": ["Role1", "Role2", ...]
