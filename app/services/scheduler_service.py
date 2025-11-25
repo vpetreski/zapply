@@ -1,37 +1,20 @@
 """Scheduler service for automated pipeline runs."""
 
 import logging
-from pathlib import Path
-import json
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db_session
 from app.models import RunTriggerType
 from app.services.scraper_service import scrape_and_save_jobs
+from app.services.settings_manager import load_settings
 
 logger = logging.getLogger(__name__)
 
-# Settings file path
-SETTINGS_FILE = Path("data/admin_settings.json")
-
 # Global scheduler instance
 scheduler: Optional[AsyncIOScheduler] = None
-
-
-def _load_settings() -> dict:
-    """Load settings from JSON file."""
-    if not SETTINGS_FILE.exists():
-        return {"run_frequency": "manual"}
-
-    try:
-        with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {"run_frequency": "manual"}
 
 
 async def run_scheduled_pipeline(trigger_type: str) -> None:
@@ -43,15 +26,21 @@ async def run_scheduled_pipeline(trigger_type: str) -> None:
     """
     logger.info(f"Starting scheduled pipeline run: {trigger_type}")
 
-    # Get database session
-    async for db in get_db_session():
+    # Get database session using proper async generator pattern
+    db_generator = get_db_session()
+    db = await db_generator.__anext__()
+
+    try:
+        await scrape_and_save_jobs(db, trigger_type=trigger_type)
+        logger.info(f"Scheduled pipeline run completed: {trigger_type}")
+    except Exception as e:
+        logger.error(f"Scheduled pipeline run failed: {trigger_type}, error: {e}")
+    finally:
+        # Properly close the generator to trigger cleanup
         try:
-            await scrape_and_save_jobs(db, trigger_type=trigger_type)
-            logger.info(f"Scheduled pipeline run completed: {trigger_type}")
-        except Exception as e:
-            logger.error(f"Scheduled pipeline run failed: {trigger_type}, error: {e}")
-        finally:
-            break  # Only use the first yielded session
+            await db_generator.aclose()
+        except StopAsyncIteration:
+            pass
 
 
 async def daily_run() -> None:
@@ -77,7 +66,7 @@ def start_scheduler() -> None:
     scheduler = AsyncIOScheduler()
 
     # Load settings and configure jobs
-    settings = _load_settings()
+    settings = load_settings()
     frequency = settings.get("run_frequency", "manual")
 
     configure_scheduler_jobs(frequency)
@@ -120,9 +109,11 @@ def configure_scheduler_jobs(frequency: str) -> None:
         return
 
     if frequency == "daily":
-        # Run at 9pm Colombian time (UTC-5, which is 2am UTC)
-        # Note: Colombia doesn't observe DST, so it's always UTC-5
-        trigger = CronTrigger(hour=2, minute=0, timezone="UTC")
+        # Run at 9pm Colombian time using proper timezone
+        # Colombia uses America/Bogota timezone (UTC-5, no DST)
+        from zoneinfo import ZoneInfo
+
+        trigger = CronTrigger(hour=21, minute=0, timezone=ZoneInfo("America/Bogota"))
         scheduler.add_job(
             daily_run,
             trigger=trigger,
@@ -130,7 +121,7 @@ def configure_scheduler_jobs(frequency: str) -> None:
             name="Daily Pipeline Run (9pm Colombian time)",
             replace_existing=True,
         )
-        logger.info("Scheduler configured for daily runs at 9pm Colombian time (2am UTC)")
+        logger.info("Scheduler configured for daily runs at 9pm America/Bogota time")
 
     elif frequency == "hourly":
         # Run at the start of every hour

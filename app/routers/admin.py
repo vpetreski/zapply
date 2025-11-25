@@ -1,19 +1,13 @@
 """Admin endpoints for database management."""
 
-import json
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.schema import Sequence
 
 from app.database import get_db
 from app.models import ApplicationLog, Job, Run, UserProfile
-
-# Settings file path
-SETTINGS_FILE = Path("data/admin_settings.json")
+from app.services.settings_manager import load_settings, save_settings
 
 router = APIRouter()
 
@@ -95,16 +89,14 @@ async def cleanup_database(
 
         for seq_name in sequences_to_reset:
             try:
-                # Use parameterized query for sequence reset
-                # Note: sequence names are validated against hardcoded list above
+                # Direct string formatting is safe here because seq_name is validated
+                # against the hardcoded list above (jobs_id_seq, runs_id_seq, etc.)
+                # PostgreSQL DDL statements don't support bind parameters
                 from sqlalchemy import text
-                await db.execute(text("ALTER SEQUENCE :seq RESTART WITH 1").bindparams(seq=seq_name))
+                await db.execute(text(f"ALTER SEQUENCE {seq_name} RESTART WITH 1"))
             except Exception:
-                # Fallback to direct SQL if bindparams doesn't work with DDL
-                try:
-                    await db.execute(text(f"ALTER SEQUENCE {seq_name} RESTART WITH 1"))
-                except Exception:
-                    pass  # Sequence might not exist
+                # Sequence might not exist, which is fine
+                pass
 
         if sequences_to_reset:
             messages.append(f"Reset {len(sequences_to_reset)} sequences")
@@ -170,29 +162,10 @@ class RunFrequencyResponse(BaseModel):
     frequency: str
 
 
-def _load_settings() -> dict:
-    """Load settings from JSON file."""
-    if not SETTINGS_FILE.exists():
-        return {"run_frequency": "manual"}
-
-    try:
-        with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {"run_frequency": "manual"}
-
-
-def _save_settings(settings: dict) -> None:
-    """Save settings to JSON file."""
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f, indent=2)
-
-
 @router.get("/settings/run-frequency", response_model=RunFrequencyResponse)
 async def get_run_frequency() -> RunFrequencyResponse:
     """Get current run frequency setting."""
-    settings = _load_settings()
+    settings = load_settings()
     return RunFrequencyResponse(frequency=settings.get("run_frequency", "manual"))
 
 
@@ -208,9 +181,9 @@ async def set_run_frequency(request: RunFrequencyRequest) -> RunFrequencyRespons
         )
 
     # Load, update, and save settings
-    settings = _load_settings()
+    settings = load_settings()
     settings["run_frequency"] = request.frequency
-    _save_settings(settings)
+    save_settings(settings)
 
     # Reconfigure scheduler with new frequency
     try:
