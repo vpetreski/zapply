@@ -3,6 +3,7 @@ import Dashboard from '../views/Dashboard.vue'
 import Jobs from '../views/Jobs.vue'
 import Runs from '../views/Runs.vue'
 import Stats from '../views/Stats.vue'
+import ProfileView from '../views/ProfileView.vue'
 import SettingsView from '../views/SettingsView.vue'
 
 const router = createRouter({
@@ -27,6 +28,11 @@ const router = createRouter({
       path: '/stats',
       name: 'stats',
       component: Stats
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: ProfileView
     },
     {
       path: '/settings',
