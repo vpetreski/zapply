@@ -262,19 +262,28 @@ just dev-frontend    # Run frontend (terminal 2)
 - **System ready to test full scraping + matching pipeline**
 
 **Immediate Next Steps (Tomorrow Morning):**
-1. **CRITICAL: Review UserProfile** - User wants to understand how it works and verify accuracy
+1. **Test Claude Code GitHub integration:**
+   - Check if Claude Code GitHub Actions are working properly
+   - Verify PR assistant and code review workflows
+   - We installed these but haven't tested them yet
+   - Make sure automation is functioning correctly
+
+2. **CRITICAL: Review UserProfile** - User wants to understand how it works and verify accuracy
    - Check `scripts/init_user_profile.py` - CV text, skills, preferences
    - Review what goes into matching prompt
    - This directly influences matching quality - must be done properly
-2. **Review database cleanup logic** - Check `scripts/clean_jobs_runs.py`
+
+3. **Review database cleanup logic** - Check `scripts/clean_jobs_runs.py`
    - Verify it preserves UserProfile correctly
    - Understand what gets deleted vs. preserved
-3. **Implement UserProfile view in UI:**
+
+4. **Implement UserProfile view in UI:**
    - Add `/api/profile` endpoint to get user profile
    - Create new Vue.js view to display profile information
    - Show: name, email, location, rate, skills, preferences, CV text
    - Allow reviewing what the AI sees when matching
-4. **Test matching with fresh run:**
+
+5. **Test matching with fresh run:**
    - Trigger new scraping run via `/api/scraper/run` endpoint
    - Monitor matching results and scoring accuracy
    - Verify matches target Principal-level backend/Java/Kotlin roles
