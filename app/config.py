@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Scheduler
     scheduler_interval_minutes: int = 60
     scraper_initial_days: int = 14  # Fetch last 2 weeks on first run
+    scraper_job_limit: int = 0  # 0 = unlimited, otherwise limit to N jobs per run
 
     # User Profile (legacy - now managed via UI at /profile)
     # These settings are deprecated and no longer used

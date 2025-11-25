@@ -13,6 +13,7 @@
         <label for="run-frequency" class="setting-label">
           <span class="label-text">Run Frequency</span>
           <span class="label-description">Configure how often the automation pipeline runs (scraping, matching, applying)</span>
+          <span class="label-tip">💡 Recommended: Daily for production use</span>
         </label>
         <select
           id="run-frequency"
@@ -30,6 +31,31 @@
 
       <div v-if="frequencyResult" class="result-message" :class="frequencyResult.success ? 'success' : 'error'">
         {{ frequencyResult.message }}
+      </div>
+
+      <div class="setting-item">
+        <label for="scrape-limit" class="setting-label">
+          <span class="label-text">Scrape Job Limit</span>
+          <span class="label-description">Limit the number of jobs scraped per run (useful for testing to reduce cost and time)</span>
+          <span class="label-tip">💡 Recommended: Unlimited for production use</span>
+        </label>
+        <select
+          id="scrape-limit"
+          v-model.number="scrapeLimit"
+          @change="saveScrapeLimit"
+          class="setting-select"
+          :disabled="savingLimit"
+          style="padding-right: 3rem;"
+        >
+          <option :value="0">Unlimited</option>
+          <option :value="10">10 jobs</option>
+          <option :value="20">20 jobs</option>
+          <option :value="50">50 jobs</option>
+        </select>
+      </div>
+
+      <div v-if="limitResult" class="result-message" :class="limitResult.success ? 'success' : 'error'">
+        {{ limitResult.message }}
       </div>
     </section>
 
@@ -179,6 +205,10 @@ const runFrequency = ref<string>('manual')
 const savingFrequency = ref(false)
 const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
 
+const scrapeLimit = ref<number>(0)
+const savingLimit = ref(false)
+const limitResult = ref<{ success: boolean; message: string } | null>(null)
+
 const hasSelectedOptions = computed(() => {
   return Object.values(cleanupOptions.value).some(v => v)
 })
@@ -224,6 +254,42 @@ async function saveRunFrequency() {
     }
   } finally {
     savingFrequency.value = false
+  }
+}
+
+async function loadScrapeLimit() {
+  try {
+    const response = await axios.get('/api/admin/settings/scrape-job-limit')
+    scrapeLimit.value = response.data.limit
+  } catch (error) {
+    console.error('Failed to load scrape limit:', error)
+  }
+}
+
+async function saveScrapeLimit() {
+  savingLimit.value = true
+  limitResult.value = null
+
+  try {
+    await axios.post('/api/admin/settings/scrape-job-limit', {
+      limit: scrapeLimit.value
+    })
+    const limitText = scrapeLimit.value === 0 ? 'Unlimited' : `${scrapeLimit.value} jobs`
+    limitResult.value = {
+      success: true,
+      message: `✓ Scrape limit set to: ${limitText}`
+    }
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      limitResult.value = null
+    }, 3000)
+  } catch (error: any) {
+    limitResult.value = {
+      success: false,
+      message: error.response?.data?.detail || 'Failed to save scrape limit'
+    }
+  } finally {
+    savingLimit.value = false
   }
 }
 
@@ -292,6 +358,7 @@ let refreshInterval: number | null = null
 
 onMounted(() => {
   loadRunFrequency()
+  loadScrapeLimit()
   loadDatabaseStats()
   // Auto-refresh stats every 5 seconds
   refreshInterval = setInterval(() => {
@@ -355,6 +422,13 @@ h1 {
 .label-description {
   font-size: 0.85rem;
   color: #888;
+}
+
+.label-tip {
+  font-size: 0.8rem;
+  color: #4a9eff;
+  font-style: italic;
+  margin-top: 0.25rem;
 }
 
 .setting-select {

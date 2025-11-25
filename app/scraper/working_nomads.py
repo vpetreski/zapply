@@ -305,8 +305,17 @@ class WorkingNomadsScraper(BaseScraper):
 
             # Extract job slugs
             slugs = await self._extract_job_slugs()
-            if progress_callback:
-                await progress_callback(f"Found {len(slugs)} jobs to scrape", "success")
+
+            # Apply job limit if set
+            job_limit = settings.scraper_job_limit
+            if job_limit > 0 and len(slugs) > job_limit:
+                print(f"⚠️  Limiting to {job_limit} jobs (found {len(slugs)} total)")
+                if progress_callback:
+                    await progress_callback(f"Found {len(slugs)} jobs, limiting to {job_limit}", "info")
+                slugs = slugs[:job_limit]
+            else:
+                if progress_callback:
+                    await progress_callback(f"Found {len(slugs)} jobs to scrape", "success")
 
             # Scrape each job
             print(f"\n📝 Scraping {len(slugs)} jobs...")

@@ -196,3 +196,44 @@ async def set_run_frequency(request: RunFrequencyRequest) -> RunFrequencyRespons
         )
 
     return RunFrequencyResponse(frequency=request.frequency)
+
+
+class ScrapeJobLimitRequest(BaseModel):
+    """Request to set scrape job limit."""
+
+    limit: int  # 0 = unlimited, otherwise limit to N jobs
+
+
+class ScrapeJobLimitResponse(BaseModel):
+    """Response with current scrape job limit."""
+
+    limit: int
+
+
+@router.get("/settings/scrape-job-limit", response_model=ScrapeJobLimitResponse)
+async def get_scrape_job_limit() -> ScrapeJobLimitResponse:
+    """Get current scrape job limit setting."""
+    settings = load_settings()
+    return ScrapeJobLimitResponse(limit=settings.get("scrape_job_limit", 0))
+
+
+@router.post("/settings/scrape-job-limit", response_model=ScrapeJobLimitResponse)
+async def set_scrape_job_limit(request: ScrapeJobLimitRequest) -> ScrapeJobLimitResponse:
+    """Set scrape job limit (0 = unlimited, otherwise limit to N jobs per run)."""
+    # Validate limit value
+    if request.limit < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Limit must be 0 (unlimited) or a positive number"
+        )
+
+    # Load, update, and save settings
+    settings = load_settings()
+    settings["scrape_job_limit"] = request.limit
+    save_settings(settings)
+
+    # Update config in memory
+    from app.config import settings as config_settings
+    config_settings.scraper_job_limit = request.limit
+
+    return ScrapeJobLimitResponse(limit=request.limit)
