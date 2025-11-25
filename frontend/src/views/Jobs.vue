@@ -308,6 +308,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  overflow: visible; /* Ensure slider thumb isn't clipped */
 }
 
 .filter-group label {
@@ -354,29 +355,33 @@ onUnmounted(() => {
 
 /* Webkit thumb */
 .score-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  background: var(--primary);
-  cursor: grab;
-  border-radius: 50%;
-  border: 2px solid var(--primary);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-  position: relative;
-  z-index: 10;
-  margin-top: -5px;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 18px !important;
+  height: 18px !important;
+  background: var(--primary) !important;
+  cursor: grab !important;
+  border-radius: 50% !important;
+  border: 3px solid #fff !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+  position: relative !important;
+  z-index: 999 !important;
+  margin-top: -6px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .score-slider::-webkit-slider-thumb:hover {
-  background: var(--primary-light);
-  border-color: var(--primary-light);
-  box-shadow: 0 3px 8px rgba(74, 158, 255, 0.6);
+  background: var(--primary-light) !important;
+  border-color: #fff !important;
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.8) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .score-slider::-webkit-slider-thumb:active {
-  cursor: grabbing;
-  box-shadow: 0 2px 4px rgba(74, 158, 255, 0.8);
+  cursor: grabbing !important;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 1) !important;
 }
 
 /* Firefox track */
@@ -391,26 +396,30 @@ onUnmounted(() => {
 
 /* Firefox thumb */
 .score-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  background: var(--primary);
-  cursor: grab;
-  border-radius: 50%;
-  border: 2px solid var(--primary);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-  position: relative;
-  z-index: 10;
+  width: 18px !important;
+  height: 18px !important;
+  background: var(--primary) !important;
+  cursor: grab !important;
+  border-radius: 50% !important;
+  border: 3px solid #fff !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+  position: relative !important;
+  z-index: 999 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .score-slider::-moz-range-thumb:hover {
-  background: var(--primary-light);
-  border-color: var(--primary-light);
-  box-shadow: 0 3px 8px rgba(74, 158, 255, 0.6);
+  background: var(--primary-light) !important;
+  border-color: #fff !important;
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.8) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .score-slider::-moz-range-thumb:active {
-  cursor: grabbing;
-  box-shadow: 0 2px 4px rgba(74, 158, 255, 0.8);
+  cursor: grabbing !important;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 1) !important;
 }
 
 .loading, .empty {
