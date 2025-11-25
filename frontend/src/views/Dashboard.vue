@@ -132,8 +132,14 @@ const formatRunTime = (run) => {
     const start = new Date(run.started_at + 'Z')
     const now = new Date()
     const elapsed = Math.floor((now - start) / 1000)
-    const minutes = Math.floor(elapsed / 60)
+
+    const hours = Math.floor(elapsed / 3600)
+    const minutes = Math.floor((elapsed % 3600) / 60)
     const seconds = elapsed % 60
+
+    if (hours > 0) {
+      return `Running for ${hours}h ${minutes}m ${seconds}s`
+    }
     return `Running for ${minutes}m ${seconds}s`
   } else if (run.completed_at) {
     return `Completed ${formatRelativeTime(run.completed_at)}`
