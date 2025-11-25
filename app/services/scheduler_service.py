@@ -28,9 +28,9 @@ async def run_scheduled_pipeline(trigger_type: str) -> None:
 
     # Get database session using proper async generator pattern
     db_generator = get_db_session()
-    db = await db_generator.__anext__()
 
     try:
+        db = await db_generator.__anext__()
         await scrape_and_save_jobs(db, trigger_type=trigger_type)
         logger.info(f"Scheduled pipeline run completed: {trigger_type}")
     except Exception as e:

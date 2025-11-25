@@ -39,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 interface Props {
   title?: string
@@ -67,6 +67,13 @@ const emit = defineEmits<{
 }>()
 
 const isProcessing = ref(false)
+
+// Reset processing state when dialog closes
+watch(() => props.isOpen, (newValue) => {
+  if (!newValue) {
+    isProcessing.value = false
+  }
+})
 
 const icon = computed(() => {
   switch (props.variant) {
