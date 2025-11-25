@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import Job, JobStatus
 from app.schemas import JobListResponse, JobResponse, JobStatusUpdate
+from app.utils import log_to_console
 
 router = APIRouter()
 
@@ -26,6 +27,8 @@ async def list_jobs(
     db: AsyncSession = Depends(get_db),
 ) -> JobListResponse:
     """List jobs with optional filtering, sorting, and pagination."""
+    log_to_console(f"📡 API: GET /api/jobs - List jobs (page={page}, size={page_size}, status={status}, source={source})")
+
     # Build query
     query = select(Job)
 
@@ -63,6 +66,8 @@ async def list_jobs(
     result = await db.execute(query)
     jobs = result.scalars().all()
 
+    log_to_console(f"✅ Returned {len(jobs)} jobs (total: {total})")
+
     return JobListResponse(
         jobs=[JobResponse.model_validate(job) for job in jobs],
         total=total,
@@ -77,12 +82,16 @@ async def get_job(
     db: AsyncSession = Depends(get_db),
 ) -> JobResponse:
     """Get a specific job by ID."""
+    log_to_console(f"📡 API: GET /api/jobs/{job_id} - Get job details")
+
     result = await db.execute(select(Job).filter(Job.id == job_id))
     job = result.scalar_one_or_none()
 
     if not job:
+        log_to_console(f"❌ Job {job_id} not found")
         raise HTTPException(status_code=404, detail="Job not found")
 
+    log_to_console(f"✅ Returned job: {job.title} @ {job.company}")
     return JobResponse.model_validate(job)
 
 
@@ -93,10 +102,13 @@ async def update_job_status(
     db: AsyncSession = Depends(get_db),
 ) -> JobResponse:
     """Update job status and related information."""
+    log_to_console(f"📡 API: PATCH /api/jobs/{job_id}/status - Update job status to {update.status}")
+
     result = await db.execute(select(Job).filter(Job.id == job_id))
     job = result.scalar_one_or_none()
 
     if not job:
+        log_to_console(f"❌ Job {job_id} not found")
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Update status
@@ -115,6 +127,7 @@ async def update_job_status(
     await db.commit()
     await db.refresh(job)
 
+    log_to_console(f"✅ Job {job_id} status updated to {update.status}")
     return JobResponse.model_validate(job)
 
 
@@ -124,13 +137,17 @@ async def delete_job(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     """Delete a job (for testing/cleanup purposes)."""
+    log_to_console(f"📡 API: DELETE /api/jobs/{job_id} - Delete job")
+
     result = await db.execute(select(Job).filter(Job.id == job_id))
     job = result.scalar_one_or_none()
 
     if not job:
+        log_to_console(f"❌ Job {job_id} not found")
         raise HTTPException(status_code=404, detail="Job not found")
 
     await db.delete(job)
     await db.commit()
 
+    log_to_console(f"✅ Job {job_id} deleted successfully")
     return {"message": f"Job {job_id} deleted successfully"}

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -12,7 +12,7 @@ from app.database import Base
 
 def utc_now():
     """Get current UTC time - helper for SQLAlchemy default."""
-    return datetime.now(timezone.utc)
+    return datetime.now(timezone.utc).replace(tzinfo=None)  # Returns timezone-naive UTC time for PostgreSQL compatibility
 
 
 class JobStatus(str, Enum):
@@ -93,18 +93,25 @@ class UserProfile(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+    # Basic information
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     email: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50))
     location: Mapped[str] = mapped_column(String(200))
     rate: Mapped[str] = mapped_column(String(100))
 
-    # CV and skills
-    cv_path: Mapped[str] = mapped_column(String(500))
-    cv_text: Mapped[Optional[str]] = mapped_column(Text)
-    skills: Mapped[Optional[list]] = mapped_column(JSON)
+    # CV file storage (PDF stored as binary data)
+    cv_filename: Mapped[Optional[str]] = mapped_column(String(500))
+    cv_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    cv_text: Mapped[Optional[str]] = mapped_column(Text)  # Extracted text from CV
 
-    # Job preferences
+    # Custom instructions for AI (user's preferences and requirements)
+    custom_instructions: Mapped[Optional[str]] = mapped_column(Text)
+
+    # AI-generated profile data (for matching)
+    skills: Mapped[Optional[list]] = mapped_column(JSON)
     preferences: Mapped[Optional[dict]] = mapped_column(JSON)
+    ai_generated_summary: Mapped[Optional[str]] = mapped_column(Text)
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
@@ -201,3 +208,19 @@ class Run(Base):
 
     def __repr__(self) -> str:
         return f"<Run {self.id}: {self.phase} ({self.status})>"
+
+
+class AppSettings(Base):
+    """Application settings stored in database."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self) -> str:
+        return f"<AppSettings {self.key}={self.value}>"

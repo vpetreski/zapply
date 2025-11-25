@@ -1,14 +1,19 @@
 <template>
   <div class="runs">
+    <!-- Profile Warning Banner -->
+    <ProfileWarningBanner ref="profileBannerRef" />
+
     <div class="runs-header">
       <h2>Pipeline Runs ({{ total }} total)</h2>
       <div class="header-actions">
         <button
           @click="startNewRun"
-          :disabled="hasRunningRun || startingRun"
+          :disabled="!profileExists || hasRunningRun || startingRun"
           class="btn btn-primary start-run-btn"
+          :title="!profileExists ? 'Create a profile first' : ''"
         >
-          <span v-if="startingRun">Starting...</span>
+          <span v-if="!profileExists">Profile Required</span>
+          <span v-else-if="startingRun">Starting...</span>
           <span v-else-if="hasRunningRun">Run In Progress</span>
           <span v-else>▶ Start New Run</span>
         </button>
@@ -172,6 +177,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import AlertDialog from '@/components/AlertDialog.vue'
+import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
 const runs = ref([])
 const loading = ref(true)
@@ -188,6 +194,10 @@ let listRefreshInterval = null
 const showAlert = ref(false)
 const alertMessage = ref('')
 const alertVariant = ref('info')
+
+// Profile check
+const profileBannerRef = ref(null)
+const profileExists = ref(true) // Assume true initially to avoid flashing disabled button
 
 // Infinite scroll
 const currentPage = ref(1)
@@ -427,7 +437,14 @@ const startNewRun = async () => {
     // Start polling for list updates
     startListRefresh()
   } catch (error) {
-    if (error.response && error.response.status === 409) {
+    if (error.response && error.response.status === 400) {
+      alertMessage.value = 'No user profile found. Please create a profile before running the scraper.'
+      alertVariant.value = 'danger'
+      // Refresh banner to show warning
+      if (profileBannerRef.value?.refresh) {
+        profileBannerRef.value.refresh()
+      }
+    } else if (error.response && error.response.status === 409) {
       alertMessage.value = 'A run is already in progress. Please wait for it to complete.'
       alertVariant.value = 'warning'
     } else {
@@ -438,6 +455,17 @@ const startNewRun = async () => {
     console.error('Failed to start run:', error)
   } finally {
     startingRun.value = false
+  }
+}
+
+async function checkProfile() {
+  try {
+    const response = await axios.get('/api/profile/exists')
+    profileExists.value = response.data.exists
+  } catch (error) {
+    console.error('Failed to check profile:', error)
+    // Assume profile exists on error
+    profileExists.value = true
   }
 }
 
@@ -463,6 +491,7 @@ const stopListRefresh = () => {
 }
 
 onMounted(() => {
+  checkProfile()
   fetchRuns()
   window.addEventListener('scroll', handleScroll)
 

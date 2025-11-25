@@ -6,8 +6,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import ApplicationLog, Job, Run, UserProfile
-from app.services.settings_manager import load_settings, save_settings
+from app.models import ApplicationLog, AppSettings, Job, Run, UserProfile
+from app.utils import log_to_console
 
 router = APIRouter()
 
@@ -39,6 +39,12 @@ async def cleanup_database(
 
     WARNING: This will permanently delete data!
     """
+    log_to_console("="*60)
+    log_to_console("📡 API: POST /api/admin/cleanup - Database cleanup")
+    log_to_console(f"   Jobs: {request.clean_jobs}, Runs: {request.clean_runs}")
+    log_to_console(f"   Logs: {request.clean_application_logs}, Profiles: {request.clean_user_profiles}")
+    log_to_console("="*60)
+
     deleted_counts = {}
     messages = []
 
@@ -103,6 +109,9 @@ async def cleanup_database(
 
         await db.commit()
 
+        log_to_console(f"✅ Cleanup completed: {deleted_counts}")
+        log_to_console("="*60 + "\n")
+
         return CleanupResponse(
             success=True,
             message="; ".join(messages) if messages else "No data deleted (nothing selected)",
@@ -111,6 +120,8 @@ async def cleanup_database(
 
     except Exception as e:
         await db.rollback()
+        log_to_console(f"❌ Cleanup failed: {str(e)}")
+        log_to_console("="*60 + "\n")
         return CleanupResponse(
             success=False,
             message=f"Cleanup failed: {str(e)}",
@@ -163,36 +174,116 @@ class RunFrequencyResponse(BaseModel):
 
 
 @router.get("/settings/run-frequency", response_model=RunFrequencyResponse)
-async def get_run_frequency() -> RunFrequencyResponse:
+async def get_run_frequency(db: AsyncSession = Depends(get_db)) -> RunFrequencyResponse:
     """Get current run frequency setting."""
-    settings = load_settings()
-    return RunFrequencyResponse(frequency=settings.get("run_frequency", "manual"))
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "run_frequency")
+    )
+    setting = result.scalar_one_or_none()
+    frequency = setting.value if setting else "manual"
+    return RunFrequencyResponse(frequency=frequency)
 
 
 @router.post("/settings/run-frequency", response_model=RunFrequencyResponse)
-async def set_run_frequency(request: RunFrequencyRequest) -> RunFrequencyResponse:
+async def set_run_frequency(
+    request: RunFrequencyRequest, db: AsyncSession = Depends(get_db)
+) -> RunFrequencyResponse:
     """Set run frequency (manual, daily, or hourly)."""
+    log_to_console(f"📡 API: POST /api/admin/settings/run-frequency - Set to '{request.frequency}'")
+
     # Validate frequency value
     valid_frequencies = ["manual", "daily", "hourly"]
     if request.frequency not in valid_frequencies:
+        log_to_console(f"❌ Invalid frequency: {request.frequency}")
         raise HTTPException(
             status_code=400,
             detail=f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}"
         )
 
-    # Load, update, and save settings
-    settings = load_settings()
-    settings["run_frequency"] = request.frequency
-    save_settings(settings)
+    # Update or create setting in database
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "run_frequency")
+    )
+    setting = result.scalar_one_or_none()
+
+    if setting:
+        log_to_console(f"   Updating existing setting from '{setting.value}' to '{request.frequency}'")
+        setting.value = request.frequency
+    else:
+        log_to_console(f"   Creating new setting: '{request.frequency}'")
+        setting = AppSettings(key="run_frequency", value=request.frequency)
+        db.add(setting)
+
+    await db.commit()
 
     # Reconfigure scheduler with new frequency
     try:
         from app.services.scheduler_service import reconfigure_scheduler
         reconfigure_scheduler(request.frequency)
+        log_to_console(f"✅ Scheduler reconfigured to '{request.frequency}'")
     except Exception as e:
+        log_to_console(f"❌ Failed to reconfigure scheduler: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to reconfigure scheduler: {str(e)}"
         )
 
     return RunFrequencyResponse(frequency=request.frequency)
+
+
+class ScrapeJobLimitRequest(BaseModel):
+    """Request to set scrape job limit."""
+
+    limit: int  # 0 = unlimited, otherwise limit to N jobs
+
+
+class ScrapeJobLimitResponse(BaseModel):
+    """Response with current scrape job limit."""
+
+    limit: int
+
+
+@router.get("/settings/scrape-job-limit", response_model=ScrapeJobLimitResponse)
+async def get_scrape_job_limit(db: AsyncSession = Depends(get_db)) -> ScrapeJobLimitResponse:
+    """Get current scrape job limit setting."""
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "scrape_job_limit")
+    )
+    setting = result.scalar_one_or_none()
+    limit = int(setting.value) if setting else 0
+    return ScrapeJobLimitResponse(limit=limit)
+
+
+@router.post("/settings/scrape-job-limit", response_model=ScrapeJobLimitResponse)
+async def set_scrape_job_limit(
+    request: ScrapeJobLimitRequest, db: AsyncSession = Depends(get_db)
+) -> ScrapeJobLimitResponse:
+    """Set scrape job limit (0 = unlimited, otherwise limit to N jobs per run)."""
+    log_to_console(f"📡 API: POST /api/admin/settings/scrape-job-limit - Set to {request.limit}")
+
+    # Validate limit value
+    if request.limit < 0:
+        log_to_console(f"❌ Invalid limit: {request.limit} (must be >= 0)")
+        raise HTTPException(
+            status_code=400,
+            detail="Limit must be 0 (unlimited) or a positive number"
+        )
+
+    # Update or create setting in database
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "scrape_job_limit")
+    )
+    setting = result.scalar_one_or_none()
+
+    if setting:
+        log_to_console(f"   Updating existing setting from {setting.value} to {request.limit}")
+        setting.value = str(request.limit)
+    else:
+        log_to_console(f"   Creating new setting: {request.limit}")
+        setting = AppSettings(key="scrape_job_limit", value=str(request.limit))
+        db.add(setting)
+
+    await db.commit()
+
+    log_to_console(f"✅ Scrape job limit updated to {request.limit}")
+    return ScrapeJobLimitResponse(limit=request.limit)

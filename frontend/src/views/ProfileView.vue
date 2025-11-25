@@ -42,6 +42,10 @@
             <span class="info-value">{{ profile.email }}</span>
           </div>
           <div class="info-item">
+            <span class="info-label">Phone:</span>
+            <span class="info-value">{{ profile.phone || 'Not provided' }}</span>
+          </div>
+          <div class="info-item">
             <span class="info-label">Location:</span>
             <span class="info-value">{{ profile.location }}</span>
           </div>
@@ -50,36 +54,56 @@
             <span class="info-value">{{ profile.rate }}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">Created:</span>
-            <span class="info-value">{{ formatDate(profile.created_at) }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Updated:</span>
-            <span class="info-value">{{ formatDate(profile.updated_at) }}</span>
+            <span class="info-label">CV File:</span>
+            <span class="info-value">{{ profile.cv_filename || 'Not uploaded' }}</span>
           </div>
         </div>
       </section>
 
-      <!-- Skills -->
+      <!-- Custom Instructions -->
       <section class="profile-section">
-        <h2>🎯 Skills ({{ profile.skills?.length || 0 }})</h2>
-        <div class="skills-container">
-          <span v-for="skill in profile.skills" :key="skill" class="skill-badge">
-            {{ skill }}
-          </span>
+        <h2>📝 Custom Instructions</h2>
+        <div class="instructions-text">{{ profile.custom_instructions || 'No custom instructions provided' }}</div>
+      </section>
+
+      <!-- AI-Generated Profile -->
+      <section class="profile-section ai-section">
+        <h2>🤖 AI-Generated Profile (Used for Job Matching)</h2>
+
+        <div v-if="profile.ai_generated_summary" class="ai-summary">
+          <strong>Summary:</strong> {{ profile.ai_generated_summary }}
+        </div>
+
+        <div class="ai-subsection">
+          <h3>Skills ({{ profile.skills?.length || 0 }})</h3>
+          <div class="skills-container">
+            <span v-for="skill in profile.skills" :key="skill" class="skill-badge">
+              {{ skill }}
+            </span>
+          </div>
+        </div>
+
+        <div class="ai-subsection">
+          <h3>Preferences</h3>
+          <pre class="json-display">{{ JSON.stringify(profile.preferences, null, 2) }}</pre>
+        </div>
+
+        <div class="ai-subsection">
+          <h3>Profile Text</h3>
+          <div class="cv-text">{{ profile.cv_text }}</div>
         </div>
       </section>
 
-      <!-- Preferences -->
-      <section class="profile-section">
-        <h2>⚙️ Preferences</h2>
-        <pre class="json-display">{{ JSON.stringify(profile.preferences, null, 2) }}</pre>
-      </section>
-
-      <!-- CV Text -->
-      <section class="profile-section">
-        <h2>📄 Profile / CV Text</h2>
-        <div class="cv-text">{{ profile.cv_text }}</div>
+      <!-- Timestamps -->
+      <section class="profile-section timestamps">
+        <div class="timestamp-item">
+          <span class="info-label">Created:</span>
+          <span class="info-value">{{ formatDate(profile.created_at) }}</span>
+        </div>
+        <div class="timestamp-item">
+          <span class="info-label">Updated:</span>
+          <span class="info-value">{{ formatDate(profile.updated_at) }}</span>
+        </div>
       </section>
     </div>
 
@@ -87,57 +111,9 @@
     <div v-else class="profile-edit">
       <h2>{{ profile ? '✏️ Edit Profile' : '➕ Create Profile' }}</h2>
 
-      <!-- Step 1: Upload CV or Paste Text -->
+      <!-- Step 1: Basic Information -->
       <section class="profile-section">
-        <h3>Step 1: Provide Your CV</h3>
-
-        <div class="upload-section">
-          <label class="upload-label">
-            📎 Upload PDF CV
-            <input
-              type="file"
-              accept=".pdf"
-              @change="handleFileUpload"
-              ref="fileInput"
-              style="display: none"
-            />
-          </label>
-          <button @click="$refs.fileInput.click()" class="btn-secondary">
-            Choose PDF File
-          </button>
-          <span v-if="uploadedFile" class="file-name">{{ uploadedFile.name }}</span>
-        </div>
-
-        <div class="divider">OR</div>
-
-        <div class="textarea-section">
-          <label>Paste CV Text:</label>
-          <textarea
-            v-model="formData.cvText"
-            rows="15"
-            placeholder="Paste your CV content here..."
-            class="cv-textarea"
-          ></textarea>
-        </div>
-      </section>
-
-      <!-- Step 2: Custom Instructions -->
-      <section class="profile-section">
-        <h3>Step 2: Custom Instructions for Claude AI</h3>
-        <p class="help-text">
-          Tell Claude how to optimize your profile. Example: "Focus on backend and architecture roles at Principal level. Emphasize Kotlin and Spring Boot experience."
-        </p>
-        <textarea
-          v-model="formData.customPrompt"
-          rows="6"
-          placeholder="Enter your instructions for Claude AI..."
-          class="prompt-textarea"
-        ></textarea>
-      </section>
-
-      <!-- Step 3: Basic Info -->
-      <section class="profile-section">
-        <h3>Step 3: Basic Information</h3>
+        <h3>Step 1: Basic Information</h3>
         <div class="form-grid">
           <div class="form-field">
             <label>Name *</label>
@@ -146,6 +122,10 @@
           <div class="form-field">
             <label>Email *</label>
             <input v-model="formData.email" type="email" required />
+          </div>
+          <div class="form-field">
+            <label>Phone</label>
+            <input v-model="formData.phone" type="text" placeholder="e.g. +573001419270" />
           </div>
           <div class="form-field">
             <label>Location *</label>
@@ -158,11 +138,53 @@
         </div>
       </section>
 
-      <!-- Generate Profile Button -->
+      <!-- Step 2: Upload CV PDF -->
+      <section class="profile-section">
+        <h3>Step 2: Upload Your CV (PDF)</h3>
+        <p class="help-text">
+          Upload your CV as a PDF file. The text will be extracted and used for AI profile generation.
+        </p>
+        <div class="upload-section">
+          <button @click="$refs.fileInput.click()" class="btn-secondary">
+            📎 {{ uploadedFile ? 'Change PDF File' : 'Choose PDF File' }}
+          </button>
+          <input
+            type="file"
+            accept=".pdf"
+            @change="handleFileUpload"
+            ref="fileInput"
+            style="display: none"
+          />
+          <span v-if="uploadedFile" class="file-info">
+            <span class="file-name">{{ uploadedFile.name }}</span>
+            <span class="file-size">({{ formatFileSize(uploadedFile.size) }})</span>
+          </span>
+          <span v-else-if="profile?.cv_filename" class="file-name">
+            Current: {{ profile.cv_filename }}
+          </span>
+        </div>
+        <div v-if="uploadError" class="error-inline">{{ uploadError }}</div>
+      </section>
+
+      <!-- Step 3: Custom Instructions -->
+      <section class="profile-section">
+        <h3>Step 3: Custom Instructions for AI</h3>
+        <p class="help-text">
+          Provide all your preferences, requirements, and constraints here. This is where you specify everything: remote-only, contractor status, work authorization restrictions, preferred industries, roles, etc. The AI will use this to generate your profile and match jobs.
+        </p>
+        <textarea
+          v-model="formData.customInstructions"
+          rows="12"
+          placeholder="Example:&#10;&#10;- I'm located in Colombia with Colombian and Serbian citizenship&#10;- NO US work authorization - can only work for companies that hire international contractors or in Latam&#10;- 100% remote work only - no hybrid or office-based positions&#10;- Contractor arrangement only&#10;- Looking for Principal/Staff Engineer roles in backend, architecture, or tech leadership&#10;- Strong preference for companies in fintech, SaaS, or developer tools&#10;- Rate expectation: $10,000-15,000/month&#10;- Focus on roles using Java, Kotlin, Spring Boot, or similar backend technologies"
+          class="custom-instructions-textarea"
+        ></textarea>
+      </section>
+
+      <!-- Step 4: Generate Profile -->
       <section class="profile-section">
         <h3>Step 4: Generate Profile with AI</h3>
         <p class="help-text">
-          Claude will analyze your CV and instructions to create an optimized profile for job matching.
+          Claude will analyze your CV and custom instructions to create an optimized profile for job matching.
         </p>
         <button
           @click="generateProfile"
@@ -171,6 +193,9 @@
         >
           {{ generating ? '🤖 Generating with Claude AI...' : '✨ Generate Profile' }}
         </button>
+        <div v-if="!canGenerate" class="validation-message">
+          Please fill in all required fields (Name, Email, Location, Rate, CV, Custom Instructions)
+        </div>
       </section>
 
       <!-- Generated Profile Preview -->
@@ -239,6 +264,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
@@ -246,12 +272,15 @@ interface Profile {
   id: number
   name: string
   email: string
+  phone: string | null
   location: string
   rate: string
-  cv_path: string | null
+  cv_filename: string | null
   cv_text: string | null
+  custom_instructions: string | null
   skills: string[] | null
   preferences: Record<string, any> | null
+  ai_generated_summary: string | null
   created_at: string
   updated_at: string
 }
@@ -263,21 +292,26 @@ interface GeneratedProfile {
   generated_summary: string
 }
 
+const route = useRoute()
 const loading = ref(false)
 const generating = ref(false)
 const saving = ref(false)
 const profile = ref<Profile | null>(null)
 const editMode = ref(false)
 const error = ref('')
+const uploadError = ref('')
 const showDeleteDialog = ref(false)
 
 const formData = ref({
   name: '',
   email: '',
+  phone: '',
   location: '',
   rate: '',
   cvText: '',
-  customPrompt: ''
+  cvFileData: '',
+  cvFilename: '',
+  customInstructions: ''
 })
 
 const uploadedFile = ref<File | null>(null)
@@ -289,7 +323,7 @@ const canGenerate = computed(() => {
          formData.value.location &&
          formData.value.rate &&
          formData.value.cvText &&
-         formData.value.customPrompt
+         formData.value.customInstructions
 })
 
 async function loadProfile() {
@@ -312,11 +346,15 @@ function startCreate() {
   formData.value = {
     name: '',
     email: '',
+    phone: '',
     location: '',
     rate: '',
     cvText: '',
-    customPrompt: ''
+    cvFileData: '',
+    cvFilename: '',
+    customInstructions: ''
   }
+  uploadedFile.value = null
   generatedProfile.value = null
 }
 
@@ -327,18 +365,24 @@ function startEdit() {
   formData.value = {
     name: profile.value.name,
     email: profile.value.email,
+    phone: profile.value.phone || '',
     location: profile.value.location,
     rate: profile.value.rate,
     cvText: profile.value.cv_text || '',
-    customPrompt: ''
+    cvFileData: '',
+    cvFilename: profile.value.cv_filename || '',
+    customInstructions: profile.value.custom_instructions || ''
   }
+  uploadedFile.value = null
   generatedProfile.value = null
 }
 
 function cancelEdit() {
   editMode.value = false
   generatedProfile.value = null
+  uploadedFile.value = null
   error.value = ''
+  uploadError.value = ''
 }
 
 async function handleFileUpload(event: Event) {
@@ -347,6 +391,7 @@ async function handleFileUpload(event: Event) {
 
   if (!file) return
 
+  uploadError.value = ''
   uploadedFile.value = file
 
   try {
@@ -358,8 +403,11 @@ async function handleFileUpload(event: Event) {
     })
 
     formData.value.cvText = response.data.text
+    formData.value.cvFileData = response.data.file_data
+    formData.value.cvFilename = response.data.filename
   } catch (err: any) {
-    error.value = `Failed to upload CV: ${err.response?.data?.detail || err.message}`
+    uploadError.value = `Failed to upload CV: ${err.response?.data?.detail || err.message}`
+    uploadedFile.value = null
   }
 }
 
@@ -372,9 +420,10 @@ async function generateProfile() {
   try {
     const response = await axios.post('/api/profile/generate', {
       cv_text: formData.value.cvText,
-      custom_prompt: formData.value.customPrompt,
+      custom_instructions: formData.value.customInstructions,
       name: formData.value.name,
       email: formData.value.email,
+      phone: formData.value.phone || null,
       location: formData.value.location,
       rate: formData.value.rate
     })
@@ -397,17 +446,23 @@ async function saveProfile() {
     await axios.put('/api/profile', {
       name: formData.value.name,
       email: formData.value.email,
+      phone: formData.value.phone || null,
       location: formData.value.location,
       rate: formData.value.rate,
+      cv_filename: formData.value.cvFilename || null,
+      cv_data_base64: formData.value.cvFileData || null,
       cv_text: generatedProfile.value.cv_text,
+      custom_instructions: formData.value.customInstructions,
       skills: generatedProfile.value.skills,
-      preferences: generatedProfile.value.preferences
+      preferences: generatedProfile.value.preferences,
+      ai_generated_summary: generatedProfile.value.generated_summary
     })
 
     // Reload profile and exit edit mode
     await loadProfile()
     editMode.value = false
     generatedProfile.value = null
+    uploadedFile.value = null
   } catch (err: any) {
     error.value = `Failed to save profile: ${err.response?.data?.detail || err.message}`
   } finally {
@@ -439,8 +494,19 @@ function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleString()
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 onMounted(() => {
   loadProfile()
+
+  // If route has query param 'create=true', automatically start create mode
+  if (route.query.create === 'true' && !profile.value) {
+    startCreate()
+  }
 })
 </script>
 
@@ -455,7 +521,7 @@ h1 {
   color: #e0e0e0;
 }
 
-.loading, .no-profile {
+.loading {
   text-align: center;
   padding: 3rem;
   background: #1e1e1e;
@@ -463,14 +529,25 @@ h1 {
   border: 1px solid #333;
 }
 
+.no-profile {
+  text-align: center;
+  padding: 3rem;
+  background: linear-gradient(135deg, #4a2c1e 0%, #3a1f1a 100%);
+  border-radius: 8px;
+  border: 2px solid #7a4a3a;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 .no-profile h2 {
-  color: #888;
+  color: #ffaa88;
   margin-bottom: 1rem;
+  font-size: 1.5rem;
 }
 
 .no-profile p {
-  color: #666;
+  color: #cc8866;
   margin-bottom: 2rem;
+  font-size: 1.1rem;
 }
 
 .profile-section {
@@ -526,6 +603,46 @@ h1 {
   color: #e0e0e0;
 }
 
+.instructions-text {
+  background: #0a0a0a;
+  color: #e0e0e0;
+  padding: 1.5rem;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  border: 1px solid #333;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ai-section {
+  border: 2px solid #4a9eff;
+  background: #1a2a3a;
+}
+
+.ai-summary {
+  background: #0a1a2a;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+  color: #8bb4e0;
+  border-left: 4px solid #4a9eff;
+}
+
+.ai-subsection {
+  margin-bottom: 1.5rem;
+}
+
+.ai-subsection:last-child {
+  margin-bottom: 0;
+}
+
+.ai-subsection h3 {
+  font-size: 1rem;
+  color: #4a9eff;
+  margin-bottom: 0.75rem;
+}
+
 .skills-container {
   display: flex;
   flex-wrap: wrap;
@@ -561,6 +678,18 @@ h1 {
   border: 1px solid #333;
   max-height: 600px;
   overflow-y: auto;
+}
+
+.timestamps {
+  display: flex;
+  gap: 2rem;
+  background: #151515;
+}
+
+.timestamp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .action-buttons {
@@ -618,59 +747,6 @@ h1 {
 }
 
 /* Edit Mode Styles */
-.upload-section {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.file-name {
-  color: #4a9eff;
-  font-size: 0.9rem;
-}
-
-.divider {
-  text-align: center;
-  color: #666;
-  margin: 1.5rem 0;
-  font-weight: bold;
-}
-
-.textarea-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.textarea-section label {
-  color: #e0e0e0;
-  font-weight: 500;
-}
-
-.cv-textarea, .prompt-textarea {
-  background: #0a0a0a;
-  color: #e0e0e0;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 1rem;
-  font-family: monospace;
-  font-size: 0.9rem;
-  resize: vertical;
-}
-
-.cv-textarea:focus, .prompt-textarea:focus {
-  outline: none;
-  border-color: #4a9eff;
-}
-
-.help-text {
-  color: #888;
-  font-size: 0.9rem;
-  margin-bottom: 1rem;
-  font-style: italic;
-}
-
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -701,6 +777,63 @@ h1 {
 .form-field input:focus {
   outline: none;
   border-color: #4a9eff;
+}
+
+.upload-section {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.file-info {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.file-name {
+  color: #4a9eff;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.file-size {
+  color: #888;
+  font-size: 0.85rem;
+}
+
+.help-text {
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.custom-instructions-textarea {
+  width: 100%;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 1rem;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 300px;
+}
+
+.custom-instructions-textarea:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+
+.validation-message {
+  color: #ff9966;
+  font-size: 0.9rem;
+  margin-top: 1rem;
+  font-style: italic;
 }
 
 .generated-preview {
@@ -741,5 +874,11 @@ h1 {
   border-radius: 4px;
   border: 1px solid #ff4444;
   margin-top: 1rem;
+}
+
+.error-inline {
+  color: #ff6666;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
 }
 </style>

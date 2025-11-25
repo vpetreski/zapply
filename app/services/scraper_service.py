@@ -5,10 +5,20 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Job, Run, RunPhase, RunStatus, RunTriggerType
+from app.models import AppSettings, Job, Run, RunPhase, RunStatus, RunTriggerType, UserProfile
 from app.schemas import JobCreate
 from app.scraper import WorkingNomadsScraper
 from app.services.matching_service import match_jobs
+from app.utils import log_to_console
+
+
+async def get_setting(db: AsyncSession, key: str, default: str = "") -> str:
+    """Get a setting value from database."""
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == key)
+    )
+    setting = result.scalar_one_or_none()
+    return setting.value if setting else default
 
 
 def add_log(run: Run, message: str, level: str = "info") -> None:
@@ -17,7 +27,7 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
         run.logs = []
 
     run.logs.append({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         "level": level,
         "message": message
     })
@@ -39,14 +49,27 @@ async def scrape_and_save_jobs(
 
     Returns:
         Dictionary with statistics: {total, new, existing, failed}
+
+    Raises:
+        ValueError: If no user profile exists
     """
+    # Check if user profile exists - REQUIRED for matching
+    result = await db.execute(select(UserProfile).limit(1))
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        raise ValueError(
+            "No user profile found. Please create a profile before running the scraper. "
+            "The profile is required for job matching."
+        )
+
     # Create run record
     run = Run(
         status=RunStatus.RUNNING.value,
         phase=RunPhase.SCRAPING.value,
         trigger_type=trigger_type,
         logs=[],
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(run)
     await db.commit()
@@ -69,27 +92,31 @@ async def scrape_and_save_jobs(
         await db.commit()
 
         # Scrape jobs
-        print("🎯 Starting job scraping...")
+        log_to_console("🎯 Starting job scraping...")
         add_log(run, "Beginning job scraping process", "info")
         await db.commit()
+
+        # Get scrape job limit from database
+        job_limit_str = await get_setting(db, "scrape_job_limit", "0")
+        job_limit = int(job_limit_str)
 
         # Pass callback to scraper for progress updates
         async def progress_callback(message: str, level: str = "info"):
             add_log(run, message, level)
             await db.commit()
 
-        jobs_data = await scraper.scrape(progress_callback=progress_callback)
+        jobs_data = await scraper.scrape(progress_callback=progress_callback, job_limit=job_limit)
         stats["total"] = len(jobs_data)
 
         add_log(run, f"Scraped {len(jobs_data)} jobs from Working Nomads", "success")
         await db.commit()
 
         # Save to database
-        print(f"\n💾 Saving {len(jobs_data)} jobs to database...")
+        log_to_console(f"\n💾 Saving {len(jobs_data)} jobs to database...")
         add_log(run, f"Saving {len(jobs_data)} jobs to database", "info")
         await db.commit()
 
-        for job_data in jobs_data:
+        for i, job_data in enumerate(jobs_data, 1):
             try:
                 # Check if job already exists
                 source_id = job_data.get("source_id")
@@ -101,7 +128,8 @@ async def scrape_and_save_jobs(
                 existing = existing_job.scalar_one_or_none()
 
                 if existing:
-                    print(f"  ⏭️  Job already exists: {source_id}")
+                    if i % 10 == 0 or i == 1:
+                        log_to_console(f"  [{i}/{len(jobs_data)}] ⏭️  Already exists: {job_data['title']}")
                     stats["existing"] += 1
                     continue
 
@@ -122,28 +150,37 @@ async def scrape_and_save_jobs(
 
                 db.add(job)
                 stats["new"] += 1
-                print(f"  ✅ Saved: {job.title} at {job.company}")
+                log_to_console(f"  [{i}/{len(jobs_data)}] ✅ NEW: {job.title} @ {job.company}")
 
             except Exception as e:
                 stats["failed"] += 1
-                print(f"  ❌ Failed to save job: {str(e)}")
+                log_to_console(f"  [{i}/{len(jobs_data)}] ❌ FAILED to save: {str(e)}")
+                if settings.debug:
+                    import traceback
+                    log_to_console(f"     Traceback:\n{traceback.format_exc()}")
 
         # Commit all changes
         await db.commit()
+
+        log_to_console(f"\n✅ Scraping phase completed!")
+        log_to_console(f"   Total scraped: {stats['total']}")
+        log_to_console(f"   ✅ New jobs: {stats['new']}")
+        log_to_console(f"   ⏭️  Duplicates: {stats['existing']}")
+        log_to_console(f"   ❌ Failed: {stats['failed']}")
 
         add_log(run, f"Scraping phase completed successfully!", "success")
         add_log(run, f"Total: {stats['total']}, New: {stats['new']}, Duplicates: {stats['existing']}, Failed: {stats['failed']}", "info")
         await db.commit()
 
-        print(f"\n📊 Scraping Summary:")
-        print(f"  Total scraped: {stats['total']}")
-        print(f"  New jobs saved: {stats['new']}")
-        print(f"  Already existed: {stats['existing']}")
-        print(f"  Failed: {stats['failed']}")
+        log_to_console(f"\n📊 Scraping Summary:")
+        log_to_console(f"  Total scraped: {stats['total']}")
+        log_to_console(f"  New jobs saved: {stats['new']}")
+        log_to_console(f"  Already existed: {stats['existing']}")
+        log_to_console(f"  Failed: {stats['failed']}")
 
         # Phase 2: Match jobs with AI
         if stats["new"] > 0:
-            print(f"\n🤖 Starting AI matching phase...")
+            log_to_console(f"\n🤖 Starting AI matching phase...")
             run.phase = RunPhase.MATCHING.value
             await db.commit()
 
@@ -167,7 +204,7 @@ async def scrape_and_save_jobs(
             }
             await db.commit()
         else:
-            print(f"\n⏭️  No new jobs to match, skipping matching phase")
+            log_to_console(f"\n⏭️  No new jobs to match, skipping matching phase")
             run.stats = {
                 "jobs_scraped": stats["total"],
                 "new_jobs": stats["new"],
@@ -183,7 +220,7 @@ async def scrape_and_save_jobs(
 
         # Complete the run
         run.status = RunStatus.COMPLETED.value
-        run.completed_at = datetime.now(timezone.utc)
+        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
         add_log(run, f"Run completed successfully!", "success")
         await db.commit()
@@ -191,12 +228,12 @@ async def scrape_and_save_jobs(
     except Exception as e:
         # Handle errors
         run.status = RunStatus.FAILED.value
-        run.completed_at = datetime.now(timezone.utc)
+        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
         run.error_message = str(e)
         add_log(run, f"Scraping failed: {str(e)}", "error")
         await db.commit()
-        print(f"\n❌ Error: {str(e)}")
+        log_to_console(f"\n❌ Error: {str(e)}")
         raise
 
     return stats

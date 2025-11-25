@@ -1,5 +1,8 @@
 <template>
   <div class="admin-container">
+    <!-- Profile Warning Banner -->
+    <ProfileWarningBanner />
+
     <h1>🔧 Admin</h1>
 
     <!-- Settings -->
@@ -10,6 +13,7 @@
         <label for="run-frequency" class="setting-label">
           <span class="label-text">Run Frequency</span>
           <span class="label-description">Configure how often the automation pipeline runs (scraping, matching, applying)</span>
+          <span class="label-tip">💡 Recommended: Daily for production use</span>
         </label>
         <select
           id="run-frequency"
@@ -27,6 +31,31 @@
 
       <div v-if="frequencyResult" class="result-message" :class="frequencyResult.success ? 'success' : 'error'">
         {{ frequencyResult.message }}
+      </div>
+
+      <div class="setting-item">
+        <label for="scrape-limit" class="setting-label">
+          <span class="label-text">Scrape Job Limit</span>
+          <span class="label-description">Limit the number of jobs scraped per run (useful for testing to reduce cost and time)</span>
+          <span class="label-tip">💡 Recommended: Unlimited for production use</span>
+        </label>
+        <select
+          id="scrape-limit"
+          v-model.number="scrapeLimit"
+          @change="saveScrapeLimit"
+          class="setting-select"
+          :disabled="savingLimit"
+          style="padding-right: 3rem;"
+        >
+          <option :value="0">Unlimited</option>
+          <option :value="10">10 jobs</option>
+          <option :value="20">20 jobs</option>
+          <option :value="50">50 jobs</option>
+        </select>
+      </div>
+
+      <div v-if="limitResult" class="result-message" :class="limitResult.success ? 'success' : 'error'">
+        {{ limitResult.message }}
       </div>
     </section>
 
@@ -59,41 +88,27 @@
       </div>
 
       <p class="warning-text">
-        ⚠️ Warning: This will permanently delete data from selected tables!
+        ⚠️ Warning: This will permanently delete data!
       </p>
 
-      <div class="cleanup-options">
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="cleanupOptions.clean_jobs" />
-          <span>Delete all Jobs ({{ dbStats.jobs }} rows)</span>
-        </label>
+      <div class="cleanup-buttons">
+        <div class="cleanup-button-group">
+          <button @click="confirmDeleteAllData" class="btn-danger-outline" :disabled="loading || isDataEmpty">
+            🗑️ Delete All Data
+          </button>
+          <p class="button-description">
+            Deletes all Jobs ({{ dbStats.jobs }}), Runs ({{ dbStats.runs }}), and Application Logs ({{ dbStats.application_logs }})
+          </p>
+        </div>
 
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="cleanupOptions.clean_runs" />
-          <span>Delete all Runs ({{ dbStats.runs }} rows)</span>
-        </label>
-
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="cleanupOptions.clean_application_logs" />
-          <span>Delete all Application Logs ({{ dbStats.application_logs }} rows)</span>
-        </label>
-
-        <label class="checkbox-label danger">
-          <input type="checkbox" v-model="cleanupOptions.clean_user_profiles" />
-          <span>⚠️ Delete User Profiles ({{ dbStats.user_profiles }} rows) - Use with caution!</span>
-        </label>
-      </div>
-
-      <div v-if="hasSelectedOptions" class="cleanup-actions">
-        <p class="confirmation-text">
-          You are about to delete: {{ selectedOptionsText }}
-        </p>
-        <button @click="confirmCleanup" class="btn-danger" :disabled="loading">
-          {{ loading ? '🔄 Cleaning...' : '🗑️ Confirm & Clean Database' }}
-        </button>
-      </div>
-      <div v-else class="cleanup-actions">
-        <p class="info-text">Select at least one option above to enable cleanup</p>
+        <div class="cleanup-button-group danger-group">
+          <button @click="confirmDeleteProfiles" class="btn-danger" :disabled="loading || dbStats.user_profiles === 0">
+            ⚠️ Delete User Profiles
+          </button>
+          <p class="button-description danger-text">
+            Deletes User Profiles ({{ dbStats.user_profiles }}) - Use with extreme caution!
+          </p>
+        </div>
       </div>
 
       <!-- Result message -->
@@ -131,6 +146,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
 interface DatabaseStats {
   jobs: number
@@ -175,8 +191,12 @@ const runFrequency = ref<string>('manual')
 const savingFrequency = ref(false)
 const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
 
-const hasSelectedOptions = computed(() => {
-  return Object.values(cleanupOptions.value).some(v => v)
+const scrapeLimit = ref<number>(0)
+const savingLimit = ref(false)
+const limitResult = ref<{ success: boolean; message: string } | null>(null)
+
+const isDataEmpty = computed(() => {
+  return dbStats.value.jobs === 0 && dbStats.value.runs === 0 && dbStats.value.application_logs === 0
 })
 
 const selectedOptionsText = computed(() => {
@@ -223,6 +243,42 @@ async function saveRunFrequency() {
   }
 }
 
+async function loadScrapeLimit() {
+  try {
+    const response = await axios.get('/api/admin/settings/scrape-job-limit')
+    scrapeLimit.value = response.data.limit
+  } catch (error) {
+    console.error('Failed to load scrape limit:', error)
+  }
+}
+
+async function saveScrapeLimit() {
+  savingLimit.value = true
+  limitResult.value = null
+
+  try {
+    await axios.post('/api/admin/settings/scrape-job-limit', {
+      limit: scrapeLimit.value
+    })
+    const limitText = scrapeLimit.value === 0 ? 'Unlimited' : `${scrapeLimit.value} jobs`
+    limitResult.value = {
+      success: true,
+      message: `✓ Scrape limit set to: ${limitText}`
+    }
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      limitResult.value = null
+    }, 3000)
+  } catch (error: any) {
+    limitResult.value = {
+      success: false,
+      message: error.response?.data?.detail || 'Failed to save scrape limit'
+    }
+  } finally {
+    savingLimit.value = false
+  }
+}
+
 async function loadDatabaseStats() {
   loading.value = true
   try {
@@ -235,15 +291,30 @@ async function loadDatabaseStats() {
   }
 }
 
-function confirmCleanup() {
-  if (!hasSelectedOptions.value) return
+function confirmDeleteAllData() {
+  if (isDataEmpty.value) return
 
-  // Extra confirmation for user profiles
-  if (cleanupOptions.value.clean_user_profiles) {
-    showProfileWarningDialog.value = true
-  } else {
-    showCleanupDialog.value = true
+  // Set options to delete jobs, runs, and logs
+  cleanupOptions.value = {
+    clean_jobs: true,
+    clean_runs: true,
+    clean_application_logs: true,
+    clean_user_profiles: false
   }
+  showCleanupDialog.value = true
+}
+
+function confirmDeleteProfiles() {
+  if (dbStats.value.user_profiles === 0) return
+
+  // Set options to only delete profiles
+  cleanupOptions.value = {
+    clean_jobs: false,
+    clean_runs: false,
+    clean_application_logs: false,
+    clean_user_profiles: true
+  }
+  showProfileWarningDialog.value = true
 }
 
 function handleProfileWarningConfirm() {
@@ -288,6 +359,7 @@ let refreshInterval: number | null = null
 
 onMounted(() => {
   loadRunFrequency()
+  loadScrapeLimit()
   loadDatabaseStats()
   // Auto-refresh stats every 5 seconds
   refreshInterval = setInterval(() => {
@@ -351,6 +423,13 @@ h1 {
 .label-description {
   font-size: 0.85rem;
   color: #888;
+}
+
+.label-tip {
+  font-size: 0.8rem;
+  color: #999;
+  font-style: italic;
+  margin-top: 0.25rem;
 }
 
 .setting-select {
@@ -459,67 +538,46 @@ h1 {
   border-left: 4px solid #ff4444;
 }
 
-.cleanup-options {
+.cleanup-buttons {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
   margin-bottom: 1.5rem;
 }
 
-.checkbox-label {
+.cleanup-button-group {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.25rem;
   background: #2a2a2a;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.2s;
+  border-radius: 6px;
+  border: 1px solid #404040;
+  transition: border-color 0.2s;
 }
 
-.checkbox-label:hover {
-  background: #333;
+.cleanup-button-group:hover {
+  border-color: #555;
 }
 
-.checkbox-label.danger {
+.cleanup-button-group.danger-group {
   background: #2a1a1a;
-  border: 1px solid #ff4444;
+  border-color: #ff4444;
 }
 
-.checkbox-label.danger:hover {
-  background: #331a1a;
+.cleanup-button-group.danger-group:hover {
+  border-color: #ff6666;
 }
 
-.checkbox-label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
+.cleanup-button-group button {
+  align-self: flex-start;
 }
 
-.checkbox-label span {
-  color: #e0e0e0;
-  font-size: 0.95rem;
-}
-
-.cleanup-actions {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid #333;
-}
-
-.confirmation-text {
-  color: #ffaa44;
-  font-weight: bold;
-  margin-bottom: 1rem;
-  padding: 0.75rem;
-  background: #2a2410;
-  border-radius: 4px;
-  border-left: 4px solid #ffaa44;
-}
-
-.info-text {
+.button-description {
+  font-size: 0.85rem;
   color: #888;
-  font-style: italic;
+  margin: 0;
+  line-height: 1.4;
 }
 
 .btn-danger {
@@ -539,6 +597,28 @@ h1 {
 }
 
 .btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-danger-outline {
+  background: transparent;
+  color: #ff6666;
+  border: 2px solid #ff4444;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: #ff4444;
+  color: white;
+}
+
+.btn-danger-outline:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

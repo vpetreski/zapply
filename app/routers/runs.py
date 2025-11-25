@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Run, RunPhase, RunStatus
+from app.utils import log_to_console
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -21,6 +22,8 @@ async def get_latest_run(db: AsyncSession = Depends(get_db)) -> dict[str, Any] |
     Returns:
         Latest run details or null if no runs exist
     """
+    log_to_console("📡 API: GET /api/runs/latest - Get latest run")
+
     # First try to get active (running) run
     result = await db.execute(
         select(Run)
@@ -40,10 +43,13 @@ async def get_latest_run(db: AsyncSession = Depends(get_db)) -> dict[str, Any] |
         run = result.scalar_one_or_none()
 
     if not run:
+        log_to_console("⚠️  No runs found")
         return None
 
     # Return only last 5 log entries for dashboard
     logs = run.logs[-5:] if run.logs else []
+
+    log_to_console(f"✅ Returned run #{run.id} (status: {run.status}, phase: {run.phase})")
 
     return {
         "id": run.id,

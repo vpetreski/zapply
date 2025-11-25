@@ -27,9 +27,8 @@ async def run_scheduled_pipeline(trigger_type: str) -> None:
     logger.info(f"Starting scheduled pipeline run: {trigger_type}")
 
     # Get database session using proper async generator pattern
-    db_generator = get_db_session()
-
     try:
+        db_generator = get_db_session()
         db = await db_generator.__anext__()
         await scrape_and_save_jobs(db, trigger_type=trigger_type)
         logger.info(f"Scheduled pipeline run completed: {trigger_type}")

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
+from app.utils import log_to_console
 
 # Create async engine
 engine = create_async_engine(
@@ -46,7 +47,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
-        except Exception:
+        except Exception as e:
+            log_to_console(f"❌ Database error: {str(e)}")
             await session.rollback()
             raise
         finally:
@@ -63,7 +65,8 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
-        except Exception:
+        except Exception as e:
+            log_to_console(f"❌ Background database error: {str(e)}")
             await session.rollback()
             raise
         finally:

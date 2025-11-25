@@ -5,8 +5,8 @@ from typing import Any
 
 from playwright.async_api import async_playwright, Browser, Page
 
-from app.config import settings
 from app.scraper.base import BaseScraper
+from app.utils import log_to_console
 
 
 class WorkingNomadsScraper(BaseScraper):
@@ -14,6 +14,7 @@ class WorkingNomadsScraper(BaseScraper):
 
     def __init__(self) -> None:
         """Initialize Working Nomads scraper."""
+        from app.config import settings
         self.username = settings.working_nomads_username
         self.password = settings.working_nomads_password
         self.base_url = "https://www.workingnomads.com"
@@ -34,7 +35,7 @@ class WorkingNomadsScraper(BaseScraper):
             return False
 
         try:
-            print(f"🔐 Logging in to Working Nomads as {self.username}...")
+            log_to_console(f"🔐 Logging in to Working Nomads as {self.username}...")
 
             await self.page.goto(self.login_url, wait_until="domcontentloaded")
             await self.page.wait_for_timeout(1000)
@@ -49,14 +50,14 @@ class WorkingNomadsScraper(BaseScraper):
 
             # Verify we're logged in (should be at /jobs page)
             if self.page.url.startswith(f"{self.base_url}/jobs"):
-                print("✅ Login successful!")
+                log_to_console("✅ Login successful!")
                 return True
             else:
-                print(f"❌ Login failed - unexpected URL: {self.page.url}")
+                log_to_console(f"❌ Login failed - unexpected URL: {self.page.url}")
                 return False
 
         except Exception as e:
-            print(f"❌ Login failed: {str(e)}")
+            log_to_console(f"❌ Login failed: {str(e)}")
             return False
 
     async def _set_filters(self) -> None:
@@ -64,19 +65,27 @@ class WorkingNomadsScraper(BaseScraper):
         if not self.page:
             return
 
-        print("🔍 Setting filters (Development + Anywhere,Colombia)...")
+        log_to_console("🔍 Setting filters (Development + Anywhere,Colombia)...")
 
         filter_url = f"{self.jobs_url}?category=development&location=anywhere,colombia"
         await self.page.goto(filter_url, wait_until="networkidle")
 
-        print("✅ Filters applied!")
+        log_to_console("✅ Filters applied!")
 
-    async def _load_all_jobs(self) -> None:
-        """Click 'Show more jobs' button until all jobs are loaded."""
+    async def _load_all_jobs(self, job_limit: int = 0) -> None:
+        """
+        Click 'Show more jobs' button until all jobs are loaded or limit is reached.
+
+        Args:
+            job_limit: Maximum number of jobs to load (0 = unlimited)
+        """
         if not self.page:
             return
 
-        print("📥 Loading all jobs...")
+        if job_limit > 0:
+            log_to_console(f"📥 Loading jobs (limit: {job_limit})...")
+        else:
+            log_to_console("📥 Loading all jobs...")
 
         # Button selectors to try
         button_selectors = [
@@ -98,21 +107,22 @@ class WorkingNomadsScraper(BaseScraper):
                 is_visible = await button.is_visible()
                 if is_visible:
                     found_button = button
-                    print("   Found 'Show more jobs' button")
+                    log_to_console("   Found 'Show more jobs' button")
                     break
 
         if not found_button:
-            print("   No 'Show more jobs' button found - all jobs may already be loaded")
+            log_to_console("   No 'Show more jobs' button found - all jobs may already be loaded")
             return
 
-        # Click button until it disappears (all jobs loaded)
+        # Click button until it disappears (all jobs loaded) or we reach the limit
         click_count = 0
+        unique_jobs = 0
         while click_count < 50:  # Safety limit
             try:
                 # Check if button still exists and is visible
                 is_visible = await found_button.is_visible()
                 if not is_visible:
-                    print(f"   Button disappeared after {click_count} clicks")
+                    log_to_console(f"   Button disappeared after {click_count} clicks")
                     break
 
                 await found_button.click()
@@ -123,7 +133,12 @@ class WorkingNomadsScraper(BaseScraper):
                 # Count jobs after click
                 jobs_after = await self.page.query_selector_all('a[href^="/jobs/"]')
                 unique_jobs = len(set([await j.get_attribute('href') for j in jobs_after]))
-                print(f"   Click {click_count}: Now showing {unique_jobs} jobs")
+                log_to_console(f"   Click {click_count}: Now showing {unique_jobs} jobs")
+
+                # Check if we've reached the limit
+                if job_limit > 0 and unique_jobs >= job_limit:
+                    log_to_console(f"   Reached job limit of {job_limit}!")
+                    break
 
                 # Try to find button again (it might be re-rendered)
                 found_button = None
@@ -136,14 +151,17 @@ class WorkingNomadsScraper(BaseScraper):
                             break
 
                 if not found_button:
-                    print(f"   All jobs loaded! (Total clicks: {click_count})")
+                    log_to_console(f"   All jobs loaded! (Total clicks: {click_count})")
                     break
 
             except Exception as e:
-                print(f"   Error clicking button: {e}")
+                log_to_console(f"   Error clicking button: {e}")
                 break
 
-        print("✅ All jobs loaded!")
+        if job_limit > 0:
+            log_to_console(f"✅ Loaded {unique_jobs} jobs (limit: {job_limit})!")
+        else:
+            log_to_console("✅ All jobs loaded!")
 
     async def _extract_job_slugs(self) -> list[str]:
         """
@@ -155,7 +173,7 @@ class WorkingNomadsScraper(BaseScraper):
         if not self.page:
             return []
 
-        print("📋 Extracting job slugs...")
+        log_to_console("📋 Extracting job slugs...")
 
         # Find all job links - format: /jobs/middle-java-developer-gr8-tech
         job_links = await self.page.query_selector_all('a[href^="/jobs/"]')
@@ -169,7 +187,7 @@ class WorkingNomadsScraper(BaseScraper):
                 if slug and '/' not in slug and slug not in slugs:
                     slugs.append(slug)
 
-        print(f"✅ Found {len(slugs)} unique jobs!")
+        log_to_console(f"✅ Found {len(slugs)} unique jobs!")
         return slugs
 
     async def _scrape_job_details(self, slug: str) -> dict[str, Any] | None:
@@ -261,10 +279,10 @@ class WorkingNomadsScraper(BaseScraper):
             }
 
         except Exception as e:
-            print(f"❌ Failed to scrape job {slug}: {str(e)}")
+            log_to_console(f"❌ Failed to scrape job {slug}: {str(e)}")
             return None
 
-    async def scrape(self, since_days: int = 1, progress_callback=None) -> list[dict[str, Any]]:
+    async def scrape(self, since_days: int = 1, progress_callback=None, job_limit: int = 0) -> list[dict[str, Any]]:
         """
         Scrape jobs from Working Nomads.
 
@@ -280,7 +298,7 @@ class WorkingNomadsScraper(BaseScraper):
 
         try:
             # Launch browser
-            print("🚀 Launching browser...")
+            log_to_console("🚀 Launching browser...")
             if progress_callback:
                 await progress_callback("Launching browser...", "info")
             playwright = await async_playwright().start()
@@ -298,22 +316,31 @@ class WorkingNomadsScraper(BaseScraper):
                 await progress_callback("Applying filters (Development + Anywhere,Colombia)...", "info")
             await self._set_filters()
 
-            # Load all jobs
+            # Load jobs (respecting limit from the start)
             if progress_callback:
-                await progress_callback("Loading all jobs (clicking 'Show more' until all loaded)...", "info")
-            await self._load_all_jobs()
+                if job_limit > 0:
+                    await progress_callback(f"Loading jobs (limit: {job_limit}, stopping early)...", "info")
+                else:
+                    await progress_callback("Loading all jobs (clicking 'Show more' until all loaded)...", "info")
+            await self._load_all_jobs(job_limit=job_limit)
 
             # Extract job slugs
             slugs = await self._extract_job_slugs()
+
+            # Apply limit (in case we loaded slightly more than needed)
+            if job_limit > 0 and len(slugs) > job_limit:
+                slugs = slugs[:job_limit]
+
             if progress_callback:
                 await progress_callback(f"Found {len(slugs)} jobs to scrape", "success")
 
             # Scrape each job
-            print(f"\n📝 Scraping {len(slugs)} jobs...")
+            log_to_console(f"\n📝 Scraping {len(slugs)} jobs...")
             for i, slug in enumerate(slugs, 1):
-                print(f"  [{i}/{len(slugs)}] {slug}")
+                log_to_console(f"  [{i}/{len(slugs)}] {slug}")
 
-                if progress_callback and i % 10 == 0:
+                # Log every job for real-time UI updates
+                if progress_callback:
                     await progress_callback(f"Scraping job {i}/{len(slugs)}...", "info")
 
                 job_data = await self._scrape_job_details(slug)
@@ -325,12 +352,12 @@ class WorkingNomadsScraper(BaseScraper):
                 if i % 10 == 0:
                     await self.page.wait_for_timeout(1000)
 
-            print(f"\n✅ Successfully scraped {len(jobs)} jobs!")
+            log_to_console(f"\n✅ Successfully scraped {len(jobs)} jobs!")
             if progress_callback:
                 await progress_callback(f"Successfully scraped {len(jobs)} jobs!", "success")
 
         except Exception as e:
-            print(f"❌ Scraping failed: {str(e)}")
+            log_to_console(f"❌ Scraping failed: {str(e)}")
             import traceback
             traceback.print_exc()
 
@@ -340,7 +367,7 @@ class WorkingNomadsScraper(BaseScraper):
                 await self.browser.close()
             if playwright:
                 await playwright.stop()
-            print("🔒 Browser closed")
+            log_to_console("🔒 Browser closed")
 
         return jobs
 
