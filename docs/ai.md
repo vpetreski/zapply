@@ -277,47 +277,90 @@ just dev-frontend    # Run frontend (terminal 2)
 - No need for manual cleanup scripts anymore!
 
 **Immediate Next Steps (Tomorrow Morning):**
-0. **Review overnight Run #1 results:**
-   - Check run status: `GET /api/runs/1`
-   - View matched jobs: `GET /api/jobs?status=matched`
-   - Check match scores and reasoning
-   - See how many jobs matched vs rejected
-   - Validate matching quality before proceeding
 
-1. **Test Claude Code GitHub integration:**
-   - Check if Claude Code GitHub Actions are working properly
-   - Verify PR assistant and code review workflows
-   - We installed these but haven't tested them yet
-   - Make sure automation is functioning correctly
+### Phase 1: UserProfile Management System 👤
+**Goal:** Build complete profile management in UI with AI-powered profile generation
 
-2. **CRITICAL: Review UserProfile** - User wants to understand how it works and verify accuracy
-   - Check `scripts/init_user_profile.py` - CV text, skills, preferences
-   - Review what goes into matching prompt
-   - This directly influences matching quality - must be done properly
+1. **Build UserProfile UI Section** (place before Settings in nav)
+   - View current profile: name, email, location, rate, skills, preferences, CV text
+   - Display what AI sees during matching
+   - Show profile creation/update date
 
-3. **Review database cleanup UI** - ✅ ALREADY DONE!
-   - Settings page added with database cleanup functionality
-   - Can now clean database from UI with selective options
-   - Scripts still available but UI is preferred method
+2. **Add Profile Management Features:**
+   - **Upload CV** - File upload for PDF resume
+   - **Custom Prompt Input** - Free text area for user instructions
+   - **AI Profile Generation** - Use Claude API to craft profile from CV + user input
+   - **Update Profile** - Save generated profile to database
+   - **Delete Profile** - Remove profile (with confirmation)
 
-4. **Implement UserProfile view in UI:**
-   - Add `/api/profile` endpoint to get user profile
-   - Create new Vue.js view to display profile information
-   - Show: name, email, location, rate, skills, preferences, CV text
-   - Allow reviewing what the AI sees when matching
+3. **Backend API Endpoints:**
+   - `GET /api/profile` - Get current user profile
+   - `POST /api/profile/generate` - Generate profile from CV + prompt using Claude
+   - `PUT /api/profile` - Update existing profile
+   - `DELETE /api/profile` - Delete profile
 
-5. **Test matching with fresh run:**
-   - Trigger new scraping run via `/api/scraper/run` endpoint
-   - Monitor matching results and scoring accuracy
-   - Verify matches target Principal-level backend/Java/Kotlin roles
-   - Check location filtering works (rejects US-authorization-required jobs)
-   - Review matched jobs to validate AI matching quality
+4. **Remove CV from Repository:**
+   - Delete `docs/Resume-Vanja-Petreski.pdf` from repo
+   - Remove CV path references from `.env.example`
+   - Remove CV path from `app/config.py`
+   - Update documentation removing CV references
+   - Git commit to remove CV from history
 
-**Next Session Priorities:**
+**Concept:** Instead of hardcoded CV, user uploads CV + provides instructions → Claude generates optimized profile for matching → stored in database
+
+### Phase 2: GitHub Bot Review & Configuration 🤖
+**Goal:** Understand and properly configure Claude Code GitHub integration
+
+1. **Review Claude Bot Integration:**
+   - Understand how PR assistant workflow works
+   - Understand how code review workflow works
+   - Review workflow files in `.github/workflows/`
+   - Test bot on a sample PR
+
+2. **Address Bot Feedback:**
+   - Review all comments from Cursor IDE
+   - Review all comments from Claude Bot (if any)
+   - Address legitimate issues
+   - Ignore or document why some comments aren't addressed
+
+### Phase 3: Matching Validation 🎯
+**Goal:** Validate that matching works correctly with new profile system
+
+1. **Clean Database:**
+   - Use Settings page to clean jobs and runs
+   - Keep user profile
+
+2. **Run Fresh Scraping + Matching:**
+   - Trigger Run #2 via `/api/scraper/run`
+   - Monitor progress and logs
+   - Wait for completion
+
+3. **Review Matching Results:**
+   - Check matched jobs (score ≥60)
+   - Verify Principal-level backend/Java/Kotlin roles
+   - Check location filtering (rejects US auth required)
+   - Review AI reasoning for matches/rejects
+   - Validate match quality
+
+4. **Iterate if Needed:**
+   - Adjust profile prompt if matching is off
+   - Re-generate profile with Claude
+   - Re-run matching
+   - Repeat until satisfied
+
+### Phase 4: Plan Next Steps 📋
+**Likely Next: Applier Component**
+- Playwright + Claude for automated job applications
+- Navigate arbitrary ATS systems
+- Fill forms intelligently
+- Handle custom questions
+
+**After Above Phases Complete:**
 1. Implement **Applier** component (Playwright + Claude for automated job applications)
 2. Add APScheduler for hourly automated scraping runs
 3. Test complete workflow: scrape → match → apply
 4. Deploy to Synology NAS for 24/7 operation
+5. Reporter component (notifications, email/webhook)
 
 ## Blockers
 None! System is functional and ready for testing.
