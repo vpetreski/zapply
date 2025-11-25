@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # Matching Settings
     matching_min_score_threshold: float = 60.0
     matching_log_interval: int = 10  # Log every N jobs
-    matching_commit_interval: int = 5  # Commit every N jobs
+    matching_commit_interval: int = 25  # Commit every N jobs (balance between safety and performance)
 
     # Application Settings
     max_concurrent_applications: int = 3

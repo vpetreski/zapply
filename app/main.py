@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -14,6 +15,13 @@ from app.config import settings
 from app.database import engine
 from app.routers import admin, health, jobs, profile, runs, scraper, stats
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
@@ -22,8 +30,15 @@ limiter = Limiter(key_func=get_remote_address)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     # Startup
-    print(f"Starting {settings.app_name} v{__version__}")
-    print(f"Database: {settings.database_url.split('@')[-1]}")  # Hide credentials
+    logger.info(f"Starting {settings.app_name} v{__version__}")
+    logger.info(f"Database: {settings.database_url.split('@')[-1]}")  # Hide credentials
+
+    # Validate configuration
+    if not settings.anthropic_api_key:
+        logger.warning("⚠️  ANTHROPIC_API_KEY not configured - AI matching will not work")
+        logger.warning("⚠️  Set ANTHROPIC_API_KEY in .env to enable job matching")
+    else:
+        logger.info("✓ Anthropic API key configured")
 
     # TODO: Start scheduler here
     # TODO: Initialize Playwright browser
@@ -31,7 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
     await engine.dispose()
 
 

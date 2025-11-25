@@ -1,7 +1,7 @@
 """User profile management endpoints."""
 
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import anthropic
@@ -252,7 +252,7 @@ async def update_profile(
         profile.cv_text = request.cv_text
         profile.skills = request.skills
         profile.preferences = request.preferences
-        profile.updated_at = datetime.utcnow()
+        profile.updated_at = datetime.now(timezone.utc)
     else:
         # Create new profile
         profile = UserProfile(
