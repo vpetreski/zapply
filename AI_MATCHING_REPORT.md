@@ -8,10 +8,10 @@
 
 ## 🎯 Executive Summary
 
-I've successfully implemented a **professional-grade AI-powered job matching system** using Claude 3.5 Sonnet. The system automatically analyzes every scraped job against your CV and profile, providing intelligent match scores (0-100) with detailed reasoning.
+I've successfully implemented a **professional-grade AI-powered job matching system** using Claude Sonnet 4.5 (latest model released September 2025). The system automatically analyzes every scraped job against your CV and profile, providing intelligent match scores (0-100) with detailed reasoning.
 
 ### What's New
-- 🤖 **Claude AI Integration**: Analyzes job descriptions vs your CV
+- 🤖 **Claude Sonnet 4.5 Integration**: Latest AI model analyzes job descriptions vs your CV
 - 📊 **Smart Scoring**: 0-100 match scores with color-coded badges
 - 🎨 **Enhanced UI**: Match scores, filtering, and sorting in Jobs view
 - 📈 **Run Tracking**: Matching phase integrated into pipeline with real-time logs
@@ -313,7 +313,7 @@ curl -X POST http://localhost:8000/api/scraper/run
 
 ### API Costs
 
-**Claude 3.5 Sonnet Pricing:**
+**Claude Sonnet 4.5 Pricing:**
 - Input: $3 per million tokens
 - Output: $15 per million tokens
 
@@ -376,12 +376,13 @@ All errors logged to:
 
 ## 🎓 Key Technical Decisions
 
-### Why Claude 3.5 Sonnet?
+### Why Claude Sonnet 4.5?
 
-- **Accuracy**: Best reasoning capabilities
-- **Cost**: Balanced cost/performance ratio
+- **Accuracy**: Latest model with best-in-class reasoning capabilities
+- **Cost**: Balanced cost/performance ratio ($3/$15 per million tokens)
 - **Speed**: Fast enough for real-time processing
 - **JSON Support**: Reliable structured outputs
+- **Released**: September 2025 (model ID: claude-sonnet-4-5-20250929)
 
 ### Scoring Rubric
 
