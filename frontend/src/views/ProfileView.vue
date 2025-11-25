@@ -1,8 +1,5 @@
 <template>
   <div class="profile-container">
-    <!-- Profile Warning Banner -->
-    <ProfileWarningBanner ref="profileBannerRef" />
-
     <h1>👤 User Profile</h1>
 
     <!-- Loading State -->
@@ -270,7 +267,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
 interface Profile {
   id: number
@@ -305,7 +301,6 @@ const editMode = ref(false)
 const error = ref('')
 const uploadError = ref('')
 const showDeleteDialog = ref(false)
-const profileBannerRef = ref(null)
 
 const formData = ref({
   name: '',
@@ -468,11 +463,6 @@ async function saveProfile() {
     editMode.value = false
     generatedProfile.value = null
     uploadedFile.value = null
-
-    // Refresh banner to hide warning now that profile exists
-    if (profileBannerRef.value?.refresh) {
-      profileBannerRef.value.refresh()
-    }
   } catch (err: any) {
     error.value = `Failed to save profile: ${err.response?.data?.detail || err.message}`
   } finally {
@@ -492,11 +482,6 @@ async function handleDeleteConfirm() {
     await axios.delete('/api/profile')
     profile.value = null
     showDeleteDialog.value = false
-
-    // Refresh banner to show warning now that profile is deleted
-    if (profileBannerRef.value?.refresh) {
-      profileBannerRef.value.refresh()
-    }
   } catch (err: any) {
     error.value = `Failed to delete profile: ${err.response?.data?.detail || err.message}`
     showDeleteDialog.value = false
@@ -536,7 +521,7 @@ h1 {
   color: #e0e0e0;
 }
 
-.loading, .no-profile {
+.loading {
   text-align: center;
   padding: 3rem;
   background: #1e1e1e;
@@ -544,14 +529,25 @@ h1 {
   border: 1px solid #333;
 }
 
+.no-profile {
+  text-align: center;
+  padding: 3rem;
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+  border-radius: 8px;
+  border: 2px solid #fca5a5;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
 .no-profile h2 {
-  color: #888;
+  color: white;
   margin-bottom: 1rem;
+  font-size: 1.5rem;
 }
 
 .no-profile p {
-  color: #666;
+  color: rgba(255, 255, 255, 0.9);
   margin-bottom: 2rem;
+  font-size: 1.1rem;
 }
 
 .profile-section {
