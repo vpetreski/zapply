@@ -36,21 +36,24 @@ class WorkingNomadsScraper(BaseScraper):
         try:
             print(f"🔐 Logging in to Working Nomads as {self.username}...")
 
-            # Navigate to login page
-            await self.page.goto(self.login_url, wait_until="networkidle")
+            await self.page.goto(self.login_url, wait_until="domcontentloaded")
+            await self.page.wait_for_timeout(1000)
 
-            # Fill in login form
-            await self.page.fill('input[name="user[email]"]', self.username)
-            await self.page.fill('input[name="user[password]"]', self.password)
+            # Fill login form
+            await self.page.fill('input[type="email"]', self.username)
+            await self.page.fill('input[type="password"]', self.password)
 
-            # Submit form
-            await self.page.click('button[type="submit"]')
+            # Submit
+            await self.page.click('input[type="submit"]')
+            await self.page.wait_for_load_state("networkidle")
 
-            # Wait for navigation to jobs page
-            await self.page.wait_for_url(f"{self.jobs_url}*", timeout=10000)
-
-            print("✅ Login successful!")
-            return True
+            # Verify we're logged in (should be at /jobs page)
+            if self.page.url.startswith(f"{self.base_url}/jobs"):
+                print("✅ Login successful!")
+                return True
+            else:
+                print(f"❌ Login failed - unexpected URL: {self.page.url}")
+                return False
 
         except Exception as e:
             print(f"❌ Login failed: {str(e)}")
@@ -63,7 +66,6 @@ class WorkingNomadsScraper(BaseScraper):
 
         print("🔍 Setting filters (Development + Anywhere,Colombia)...")
 
-        # Navigate to jobs page with filters
         filter_url = f"{self.jobs_url}?category=development&location=anywhere,colombia"
         await self.page.goto(filter_url, wait_until="networkidle")
 
@@ -76,28 +78,26 @@ class WorkingNomadsScraper(BaseScraper):
 
         print("📥 Loading all jobs...")
 
-        while True:
-            try:
-                # Look for "Show more jobs" button
-                show_more_button = await self.page.query_selector('button:has-text("Show more jobs")')
+        # Working Nomads loads jobs as you scroll, not via button
+        # Let's scroll to bottom to load all jobs
+        previous_height = 0
+        no_change_count = 0
 
-                if not show_more_button:
-                    break
+        while no_change_count < 3:
+            # Scroll to bottom
+            await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await self.page.wait_for_timeout(1500)
 
-                # Check if button is visible and enabled
-                is_visible = await show_more_button.is_visible()
-                if not is_visible:
-                    break
+            # Check if height changed
+            current_height = await self.page.evaluate("document.body.scrollHeight")
 
-                # Click the button
-                await show_more_button.click()
+            if current_height == previous_height:
+                no_change_count += 1
+            else:
+                no_change_count = 0
+                print(f"   Loaded more jobs... (height: {current_height})")
 
-                # Wait for new jobs to load
-                await self.page.wait_for_timeout(1000)
-
-            except Exception as e:
-                print(f"No more jobs to load: {str(e)}")
-                break
+            previous_height = current_height
 
         print("✅ All jobs loaded!")
 
@@ -106,27 +106,24 @@ class WorkingNomadsScraper(BaseScraper):
         Extract job slugs from the job listing.
 
         Returns:
-            List of job slugs (e.g., ['lead-rpg-designer-devsu', ...])
+            List of job slugs (e.g., ['middle-java-developer-gr8-tech', ...])
         """
         if not self.page:
             return []
 
         print("📋 Extracting job slugs...")
 
-        # Get all job links
-        job_links = await self.page.query_selector_all('a[href*="?"][href*="job="]')
+        # Find all job links - format: /jobs/middle-java-developer-gr8-tech
+        job_links = await self.page.query_selector_all('a[href^="/jobs/"]')
 
         slugs = []
         for link in job_links:
             href = await link.get_attribute('href')
-            if href:
-                # Extract job slug from URL parameter
-                # e.g., /jobs?category=development&location=anywhere,colombia&job=lead-rpg-designer-devsu
-                match = re.search(r'job=([^&]+)', href)
-                if match:
-                    slug = match.group(1)
-                    if slug not in slugs:
-                        slugs.append(slug)
+            if href and href != '/jobs':
+                # Extract slug from URL
+                slug = href.replace('/jobs/', '')
+                if slug and '/' not in slug and slug not in slugs:
+                    slugs.append(slug)
 
         print(f"✅ Found {len(slugs)} unique jobs!")
         return slugs
@@ -136,7 +133,7 @@ class WorkingNomadsScraper(BaseScraper):
         Scrape details for a single job.
 
         Args:
-            slug: Job slug (e.g., 'lead-rpg-designer-devsu')
+            slug: Job slug (e.g., 'middle-java-developer-gr8-tech')
 
         Returns:
             Job data dictionary or None if failed
@@ -145,58 +142,73 @@ class WorkingNomadsScraper(BaseScraper):
             return None
 
         try:
-            # Navigate to job detail page
+            # Navigate to job detail page with filters to maintain context
             job_url = f"{self.jobs_url}?category=development&location=anywhere,colombia&job={slug}"
             await self.page.goto(job_url, wait_until="networkidle")
+            await self.page.wait_for_timeout(500)
 
-            # Extract job details
-            title = await self.page.text_content('h1') or ""
+            # Title (h1 on job detail page)
+            title_elem = await self.page.query_selector('h1')
+            title = await title_elem.inner_text() if title_elem else slug.replace('-', ' ').title()
             title = title.strip()
 
-            # Company name - usually in a specific element
-            company_elem = await self.page.query_selector('.company-name, [class*="company"]')
-            company = await company_elem.text_content() if company_elem else "Unknown"
-            company = company.strip()
+            # Company name (near the h1)
+            company = "Unknown"
+            # Try to find company - it's usually right after the title
+            company_candidates = await self.page.query_selector_all('h1 + div, h1 ~ div')
+            for candidate in company_candidates[:3]:
+                text = await candidate.inner_text()
+                text = text.strip()
+                # Company names are usually short and don't have newlines
+                if text and 3 < len(text) < 50 and '\n' not in text:
+                    # Skip common non-company texts
+                    if text.lower() not in ['about the job', 'full-time', 'part-time', 'anywhere']:
+                        company = text
+                        break
 
-            # Description - get the main job description
-            description_elem = await self.page.query_selector('.job-description, [class*="description"]')
-            description = await description_elem.text_content() if description_elem else ""
-            description = description.strip()
+            # Description - get all paragraph text from the main content
+            paragraphs = await self.page.query_selector_all('main p, article p, [role="main"] p')
+            description_parts = []
+            for p in paragraphs:
+                text = await p.inner_text()
+                if text and len(text) > 20:  # Skip very short paragraphs
+                    description_parts.append(text.strip())
 
-            # Tags
-            tag_elements = await self.page.query_selector_all('.tag, .badge, [class*="tag"]')
+            description = '\n\n'.join(description_parts) if description_parts else ""
+
+            # Location (look for "Anywhere" or location text)
+            location = "Anywhere"  # Default since we filtered for "Anywhere"
+
+            # Tags (look for badge/tag elements)
+            tag_elements = await self.page.query_selector_all('span.badge, .tag, [class*="tag"]')
             tags = []
-            for tag_elem in tag_elements:
-                tag_text = await tag_elem.text_content()
-                if tag_text:
-                    tags.append(tag_text.strip())
+            for tag_elem in tag_elements[:10]:  # Limit to first 10 tags
+                tag_text = await tag_elem.inner_text()
+                if tag_text and len(tag_text) < 30:  # Reasonable tag length
+                    tags.append(tag_text.strip().lower())
 
-            # Location
-            location_elem = await self.page.query_selector('[class*="location"]')
-            location = await location_elem.text_content() if location_elem else None
-            location = location.strip() if location else None
+            # Apply button URL
+            apply_button = await self.page.query_selector('a:has-text("Apply"), button:has-text("Apply")')
+            apply_url = None
+            if apply_button:
+                apply_url = await apply_button.get_attribute('href')
+                # Make absolute URL if relative
+                if apply_url and not apply_url.startswith('http'):
+                    apply_url = f"{self.base_url}{apply_url}"
 
-            # Extract "Apply for this position" URL
-            apply_button = await self.page.query_selector('a:has-text("Apply"), a[href*="apply"]')
-            apply_url = await apply_button.get_attribute('href') if apply_button else None
-
-            # If apply_url is relative, make it absolute
-            if apply_url and not apply_url.startswith('http'):
-                apply_url = f"{self.base_url}{apply_url}"
-
-            # Full job URL
+            # Full job page URL
             full_url = f"{self.base_url}/jobs/{slug}"
 
             return {
                 "id": slug,
-                "url": apply_url or full_url,  # Prefer apply URL, fallback to job page
+                "url": apply_url or full_url,  # Prefer apply URL
                 "title": title,
                 "company": company,
                 "description": description,
-                "requirements": None,  # Could extract if there's a separate section
+                "requirements": None,  # Could parse separately if needed
                 "location": location,
-                "salary": None,  # Could extract if available
-                "tags": tags,
+                "salary": None,  # Parse if available
+                "tags": tags if tags else None,
                 "raw_data": {
                     "slug": slug,
                     "job_page_url": full_url,
@@ -219,6 +231,7 @@ class WorkingNomadsScraper(BaseScraper):
             List of normalized job dictionaries
         """
         jobs = []
+        playwright = None
 
         try:
             # Launch browser
@@ -241,25 +254,33 @@ class WorkingNomadsScraper(BaseScraper):
             slugs = await self._extract_job_slugs()
 
             # Scrape each job
-            print(f"📝 Scraping {len(slugs)} jobs...")
+            print(f"\n📝 Scraping {len(slugs)} jobs...")
             for i, slug in enumerate(slugs, 1):
-                print(f"  [{i}/{len(slugs)}] Scraping {slug}...")
+                print(f"  [{i}/{len(slugs)}] {slug}")
 
                 job_data = await self._scrape_job_details(slug)
                 if job_data:
                     normalized_job = self.normalize_job(job_data)
                     jobs.append(normalized_job)
 
-            print(f"✅ Successfully scraped {len(jobs)} jobs!")
+                # Small delay to be polite
+                if i % 10 == 0:
+                    await self.page.wait_for_timeout(1000)
+
+            print(f"\n✅ Successfully scraped {len(jobs)} jobs!")
 
         except Exception as e:
             print(f"❌ Scraping failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
         finally:
             # Close browser
             if self.browser:
                 await self.browser.close()
-                print("🔒 Browser closed")
+            if playwright:
+                await playwright.stop()
+            print("🔒 Browser closed")
 
         return jobs
 
