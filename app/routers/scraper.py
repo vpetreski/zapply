@@ -2,14 +2,18 @@
 
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_maker, get_db
 from app.models import Run, RunStatus
 from app.services.scraper_service import scrape_and_save_jobs
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
 
@@ -31,7 +35,8 @@ async def run_scraper_background():
 
 
 @router.post("/run", response_model=StartRunResponse)
-async def run_scraper(db: AsyncSession = Depends(get_db)) -> StartRunResponse:
+@limiter.limit("5/minute")
+async def run_scraper(request: Request, db: AsyncSession = Depends(get_db)) -> StartRunResponse:
     """
     Manually trigger job scraping from Working Nomads.
 

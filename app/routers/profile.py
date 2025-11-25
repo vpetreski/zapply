@@ -5,14 +5,18 @@ from datetime import datetime
 from typing import Optional
 
 import anthropic
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.models import UserProfile
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
 
@@ -94,7 +98,9 @@ async def get_profile(db: AsyncSession = Depends(get_db)) -> Optional[ProfileRes
 
 
 @router.post("/generate", response_model=GenerateProfileResponse)
+@limiter.limit("10/minute")
 async def generate_profile(
+    http_request: Request,
     request: GenerateProfileRequest,
     db: AsyncSession = Depends(get_db)
 ) -> GenerateProfileResponse:

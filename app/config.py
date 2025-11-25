@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     # Anthropic API
     anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-5-20250929"
 
     # Job Sources - Working Nomads
     working_nomads_username: str = ""
@@ -30,6 +31,11 @@ class Settings(BaseSettings):
     user_email: str = ""
     user_location: str = ""
     user_rate: str = ""
+
+    # Matching Settings
+    matching_min_score_threshold: float = 60.0
+    matching_log_interval: int = 10  # Log every N jobs
+    matching_commit_interval: int = 5  # Commit every N jobs
 
     # Application Settings
     max_concurrent_applications: int = 3

@@ -1,12 +1,14 @@
 """AI-powered job matching service using Claude."""
 
-from datetime import datetime
+import json
+from datetime import datetime, timezone
 from typing import Optional
 
 import anthropic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.config import settings
 from app.models import Job, JobStatus, Run, UserProfile
@@ -18,7 +20,7 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
         run.logs = []
 
     run.logs.append({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "level": level,
         "message": message
     })
@@ -33,6 +35,12 @@ async def get_active_user_profile(db: AsyncSession) -> Optional[UserProfile]:
     return result.scalar_one_or_none()
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((anthropic.APIConnectionError, anthropic.RateLimitError)),
+    reraise=True
+)
 async def match_job_with_claude(
     job: Job,
     user_profile: UserProfile,
@@ -93,7 +101,7 @@ Respond in this exact JSON format:
     try:
         # Call Claude API (async)
         message = await client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model=settings.anthropic_model,
             max_tokens=2000,
             temperature=0.3,  # Lower temperature for more consistent scoring
             messages=[{
@@ -106,10 +114,19 @@ Respond in this exact JSON format:
         response_text = message.content[0].text
 
         # Parse JSON response
-        import json
         match_data = json.loads(response_text)
 
+        # Validate required fields
+        required_fields = ["score", "reasoning", "strengths", "concerns", "recommendation"]
+        missing_fields = [field for field in required_fields if field not in match_data]
+        if missing_fields:
+            raise ValueError(f"Missing required fields in Claude response: {missing_fields}")
+
         score = float(match_data["score"])
+
+        # Validate score range
+        if not 0 <= score <= 100:
+            raise ValueError(f"Invalid score: {score} (must be 0-100)")
 
         # Build detailed reasoning from response
         reasoning = f"""**Match Score: {score}/100**
@@ -134,18 +151,22 @@ Respond in this exact JSON format:
         return (0.0, f"Error during matching: {str(e)}")
 
 
-async def match_jobs(db: AsyncSession, run: Run, min_score: float = 60.0) -> dict[str, int]:
+async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dict[str, int]:
     """
     Match all new jobs against user profile using Claude AI.
 
     Args:
         db: Database session
         run: Current run for logging
-        min_score: Minimum score threshold (default 60)
+        min_score: Minimum score threshold (defaults to config value)
 
     Returns:
         Dictionary with statistics
     """
+    # Use config default if not provided
+    if min_score is None:
+        min_score = settings.matching_min_score_threshold
+
     add_log(run, "Starting AI-powered job matching phase", "info")
     await db.commit()
 
@@ -184,6 +205,12 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = 60.0) -> dic
         add_log(run, f"Found {stats['total_jobs']} new jobs to match", "info")
         await db.commit()
 
+        # Validate API key before initializing client
+        if not settings.anthropic_api_key:
+            add_log(run, "ANTHROPIC_API_KEY not configured", "error")
+            await db.commit()
+            raise ValueError("Missing Anthropic API key - set ANTHROPIC_API_KEY in .env")
+
         # Initialize async Claude client
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         add_log(run, "Initialized Claude AI client (async)", "info")
@@ -194,8 +221,8 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = 60.0) -> dic
 
         for i, job in enumerate(jobs, 1):
             try:
-                # Log progress every 10 jobs
-                if i % 10 == 0 or i == 1:
+                # Log progress at configured interval
+                if i % settings.matching_log_interval == 0 or i == 1:
                     add_log(run, f"Matching job {i}/{stats['total_jobs']}: {job.title}", "info")
                     await db.commit()
 
@@ -205,7 +232,7 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = 60.0) -> dic
                 # Update job with match results
                 job.match_score = score
                 job.match_reasoning = reasoning
-                job.matched_at = datetime.utcnow()
+                job.matched_at = datetime.now(timezone.utc)
 
                 total_score += score
 
@@ -219,8 +246,8 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = 60.0) -> dic
                     stats["rejected"] += 1
                     print(f"  ❌ REJECTED ({score:.1f}/100): {job.title} at {job.company}")
 
-                # Commit every 5 jobs to save progress
-                if i % 5 == 0:
+                # Commit at configured interval to save progress
+                if i % settings.matching_commit_interval == 0:
                     await db.commit()
 
             except Exception as e:

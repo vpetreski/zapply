@@ -1,6 +1,6 @@
 """Application reporting and notifications."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -24,7 +24,7 @@ class Reporter:
             Dictionary with report data
         """
         # Get jobs from last 24 hours
-        since = datetime.utcnow() - timedelta(hours=24)
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
 
         # Count by status
         new_query = select(Job).filter(Job.created_at >= since, Job.status == JobStatus.NEW.value)
@@ -66,7 +66,7 @@ class Reporter:
                 }
                 for job in failed_jobs
             ],
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
     async def send_notification(self, report: dict[str, Any]) -> bool:

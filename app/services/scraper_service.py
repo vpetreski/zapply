@@ -1,6 +1,6 @@
 """Scraper service to handle job scraping, matching, and saving to database."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,7 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
         run.logs = []
 
     run.logs.append({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "level": level,
         "message": message
     })
@@ -42,7 +42,7 @@ async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
         status=RunStatus.RUNNING.value,
         phase=RunPhase.SCRAPING.value,
         logs=[],
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc),
     )
     db.add(run)
     await db.commit()
@@ -179,7 +179,7 @@ async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
 
         # Complete the run
         run.status = RunStatus.COMPLETED.value
-        run.completed_at = datetime.utcnow()
+        run.completed_at = datetime.now(timezone.utc)
         run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
         add_log(run, f"Run completed successfully!", "success")
         await db.commit()
@@ -187,7 +187,7 @@ async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
     except Exception as e:
         # Handle errors
         run.status = RunStatus.FAILED.value
-        run.completed_at = datetime.utcnow()
+        run.completed_at = datetime.now(timezone.utc)
         run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
         run.error_message = str(e)
         add_log(run, f"Scraping failed: {str(e)}", "error")
