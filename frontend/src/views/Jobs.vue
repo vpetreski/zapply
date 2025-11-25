@@ -334,12 +334,22 @@ onUnmounted(() => {
 .score-slider {
   width: 120px;
   height: 6px;
-  background: var(--bg-darker);
+  background: transparent;
   border-radius: 3px;
   outline: none;
   -webkit-appearance: none;
+  appearance: none;
 }
 
+/* Webkit (Chrome/Safari) track */
+.score-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-darker);
+  border-radius: 3px;
+}
+
+/* Webkit thumb */
 .score-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -348,16 +358,27 @@ onUnmounted(() => {
   background: var(--primary);
   cursor: pointer;
   border-radius: 50%;
+  margin-top: -5px; /* Center the thumb on the track */
   transition: all 0.2s;
-  position: relative;
-  z-index: 2;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .score-slider::-webkit-slider-thumb:hover {
   background: var(--primary-light);
-  transform: scale(1.1);
+  transform: scale(1.2);
+  box-shadow: 0 3px 6px rgba(74, 158, 255, 0.4);
 }
 
+/* Firefox track */
+.score-slider::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-darker);
+  border-radius: 3px;
+  border: none;
+}
+
+/* Firefox thumb */
 .score-slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
@@ -366,13 +387,13 @@ onUnmounted(() => {
   border-radius: 50%;
   border: none;
   transition: all 0.2s;
-  position: relative;
-  z-index: 2;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .score-slider::-moz-range-thumb:hover {
   background: var(--primary-light);
-  transform: scale(1.1);
+  transform: scale(1.2);
+  box-shadow: 0 3px 6px rgba(74, 158, 255, 0.4);
 }
 
 .loading, .empty {
