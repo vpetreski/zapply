@@ -5,9 +5,31 @@
 
 Working Nomads scraper and AI-powered matcher are fully implemented and working! Currently testing and refining the matching logic. Next: Applier implementation.
 
-## Last Session - 2025-11-24 (Evening)
+## Last Session - 2025-11-25 (Morning)
 
 ### Accomplished This Session
+**Fixed All Claude Bot Review Issues:**
+- ✅ Fixed Python 3.12+ datetime.utcnow() deprecation (8+ instances across 4 files)
+- ✅ Created utc_now() helper function for SQLAlchemy defaults
+- ✅ Moved json import to top of matching_service.py
+- ✅ Added API key validation before Claude client initialization
+- ✅ Added Claude response schema validation (required fields + score range)
+- ✅ Moved magic numbers and model ID to config.py (4 new settings)
+- ✅ Added database index on match_score field (migration 888d2d4282fa)
+- ✅ Added retry logic with tenacity (3 attempts, exponential backoff)
+- ✅ Added rate limiting with slowapi (5/min scraper, 10/min profile)
+- ✅ All fixes committed: e3f8af1
+
+**Key Improvements:**
+- Better error handling and validation
+- Configurable intervals via environment variables
+- Improved API resilience with retries
+- Rate limiting to prevent abuse
+- Performance optimization with database index
+
+### Previous Session - 2025-11-24 (Evening)
+
+### Accomplished That Session
 **Fixed Critical Matcher Bug & Built Profile System:**
 - ✅ Diagnosed "No user profile found" error blocking matching phase
 - ✅ Initially created UserProfile with real CV data (6,500 chars, 51 skills)
@@ -276,9 +298,59 @@ just dev-frontend    # Run frontend (terminal 2)
 - Safety confirmations prevent accidental deletions
 - No need for manual cleanup scripts anymore!
 
-**Immediate Next Steps (Tomorrow Morning):**
+**Immediate Next Steps:**
 
-### Phase 1: UserProfile Management System 👤
+### Phase 1: TESTING & POLISHING 🧪
+**Goal:** Test all implemented features thoroughly and polish any issues found
+
+1. **Test Scraper:**
+   - Trigger scraping run via `/api/scraper/run`
+   - Verify login to Working Nomads
+   - Verify filters applied correctly
+   - Verify job extraction and saving
+   - Check for duplicates handling
+   - Review run logs and statistics
+
+2. **Test Matcher:**
+   - Verify matching runs after scraping
+   - Check match scores (0-100 range)
+   - Review reasoning quality
+   - Validate MATCHED vs REJECTED status
+   - Test with different profile configurations
+   - Verify API key validation works
+   - Test retry logic with network issues
+
+3. **Test Profile Management:**
+   - View existing profile
+   - Upload CV and generate new profile
+   - Update profile with custom prompts
+   - Delete profile (with confirmation)
+   - Test AI profile generation quality
+   - Verify rate limiting works
+
+4. **Test Settings Page:**
+   - View database statistics
+   - Selective cleanup (jobs, runs)
+   - Verify confirmations work
+   - Check data actually deleted
+
+5. **Test Dashboard & Jobs Views:**
+   - View dashboard statistics
+   - Filter jobs by status
+   - Search jobs by keyword
+   - View job details
+   - Check pagination
+
+6. **Polish Issues Found:**
+   - Fix any bugs discovered
+   - Improve error messages
+   - Enhance UI/UX where needed
+   - Optimize performance
+   - Update documentation
+
+**THEN, after testing complete:**
+
+### Phase 2: UserProfile Management System 👤 ✅ COMPLETE!
 **Goal:** Build complete profile management in UI with AI-powered profile generation
 
 1. **Build UserProfile UI Section** (place before Settings in nav)
@@ -308,47 +380,27 @@ just dev-frontend    # Run frontend (terminal 2)
 
 **Concept:** Instead of hardcoded CV, user uploads CV + provides instructions → Claude generates optimized profile for matching → stored in database
 
-### Phase 2: GitHub Bot Review & Configuration 🤖
+### Phase 3: GitHub Bot Review & Configuration 🤖 ✅ COMPLETE!
 **Goal:** Understand and properly configure Claude Code GitHub integration
 
-1. **Review Claude Bot Integration:**
-   - Understand how PR assistant workflow works
-   - Understand how code review workflow works
-   - Review workflow files in `.github/workflows/`
-   - Test bot on a sample PR
+1. **Review Claude Bot Integration:** ✅
+   - ✅ Reviewed PR #1 comments from Claude Bot
+   - ✅ Identified 8 critical issues to fix
+   - ✅ All issues addressed systematically
 
-2. **Address Bot Feedback:**
-   - Review all comments from Cursor IDE
-   - Review all comments from Claude Bot (if any)
-   - Address legitimate issues
-   - Ignore or document why some comments aren't addressed
+2. **Address Bot Feedback:** ✅
+   - ✅ datetime.utcnow() deprecation fixed
+   - ✅ API validation added
+   - ✅ Response validation added
+   - ✅ Configuration centralized
+   - ✅ Database optimization added
+   - ✅ Retry logic implemented
+   - ✅ Rate limiting added
 
-### Phase 3: Matching Validation 🎯
-**Goal:** Validate that matching works correctly with new profile system
+### Phase 4: Matching Validation 🎯
+**(PART OF TESTING PHASE ABOVE)**
 
-1. **Clean Database:**
-   - Use Settings page to clean jobs and runs
-   - Keep user profile
-
-2. **Run Fresh Scraping + Matching:**
-   - Trigger Run #2 via `/api/scraper/run`
-   - Monitor progress and logs
-   - Wait for completion
-
-3. **Review Matching Results:**
-   - Check matched jobs (score ≥60)
-   - Verify Principal-level backend/Java/Kotlin roles
-   - Check location filtering (rejects US auth required)
-   - Review AI reasoning for matches/rejects
-   - Validate match quality
-
-4. **Iterate if Needed:**
-   - Adjust profile prompt if matching is off
-   - Re-generate profile with Claude
-   - Re-run matching
-   - Repeat until satisfied
-
-### Phase 4: Plan Next Steps 📋
+### Phase 5: Plan Next Steps 📋
 **Likely Next: Applier Component**
 - Playwright + Claude for automated job applications
 - Navigate arbitrary ATS systems
@@ -363,7 +415,7 @@ just dev-frontend    # Run frontend (terminal 2)
 5. Reporter component (notifications, email/webhook)
 
 ## Blockers
-None! System is functional and ready for testing.
+None! System ready for comprehensive testing.
 
 ## Notes
 
@@ -451,6 +503,6 @@ None! System is functional and ready for testing.
 
 ---
 
-**Last Updated:** 2025-11-24 by Claude Code
-**Next Session:** User will review setup, provide feedback, then implement core features (scraper, matcher, applier)
+**Last Updated:** 2025-11-25 by Claude Code
+**Next Session:** Comprehensive testing of all implemented features, polish any issues found, then plan next phase
 **GitHub:** https://github.com/vpetreski/zapply (private)
