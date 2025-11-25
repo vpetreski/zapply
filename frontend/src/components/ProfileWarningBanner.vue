@@ -5,8 +5,8 @@
       <div class="banner-text">
         <strong>Profile Required</strong>
         <p>
-          You must create a user profile before you can run the job scraper.
-          The profile is used for AI-powered job matching.
+          You must create a user profile before you can run the pipeline.
+          The profile is used for AI-powered job matching and application.
         </p>
       </div>
       <router-link to="/profile" class="banner-button">
