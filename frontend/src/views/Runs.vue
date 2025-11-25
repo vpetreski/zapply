@@ -157,11 +157,21 @@
       </div>
     </div>
   </div>
+
+  <!-- Alert Dialog -->
+  <AlertDialog
+    v-model:isOpen="showAlert"
+    title="Run Error"
+    :message="alertMessage"
+    :variant="alertVariant"
+    buttonText="OK"
+  />
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import AlertDialog from '@/components/AlertDialog.vue'
 
 const runs = ref([])
 const loading = ref(true)
@@ -173,6 +183,11 @@ const startingRun = ref(false)
 const autoScrollEnabled = ref(false)
 let autoRefreshInterval = null
 let listRefreshInterval = null
+
+// Alert dialog state
+const showAlert = ref(false)
+const alertMessage = ref('')
+const alertVariant = ref('info')
 
 // Infinite scroll
 const currentPage = ref(1)
@@ -413,10 +428,13 @@ const startNewRun = async () => {
     startListRefresh()
   } catch (error) {
     if (error.response && error.response.status === 409) {
-      alert('A run is already in progress. Please wait for it to complete.')
+      alertMessage.value = 'A run is already in progress. Please wait for it to complete.'
+      alertVariant.value = 'warning'
     } else {
-      alert('Failed to start run: ' + (error.response?.data?.detail || error.message))
+      alertMessage.value = 'Failed to start run: ' + (error.response?.data?.detail || error.message)
+      alertVariant.value = 'danger'
     }
+    showAlert.value = true
     console.error('Failed to start run:', error)
   } finally {
     startingRun.value = false

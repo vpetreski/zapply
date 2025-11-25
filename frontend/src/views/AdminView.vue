@@ -102,11 +102,35 @@
       </div>
     </section>
   </div>
+
+  <!-- Profile Warning Dialog (shown first if deleting profiles) -->
+  <ConfirmDialog
+    v-model:isOpen="showProfileWarningDialog"
+    title="Delete User Profiles?"
+    message="You are about to delete User Profiles! This will remove all user profile data including CVs, skills, and preferences. This is a critical operation. Are you absolutely sure?"
+    confirmText="Yes, Continue"
+    cancelText="Cancel"
+    variant="danger"
+    @confirm="handleProfileWarningConfirm"
+  />
+
+  <!-- Cleanup Confirmation Dialog -->
+  <ConfirmDialog
+    v-model:isOpen="showCleanupDialog"
+    title="Confirm Database Cleanup"
+    :message="`Are you sure you want to delete: ${selectedOptionsText}?\n\nThis action cannot be undone!`"
+    confirmText="Delete Data"
+    cancelText="Cancel"
+    processingText="Deleting..."
+    variant="danger"
+    @confirm="handleCleanupConfirm"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 interface DatabaseStats {
   jobs: number
@@ -144,6 +168,8 @@ const cleanupOptions = ref<CleanupOptions>({
 })
 
 const cleanupResult = ref<CleanupResult | null>(null)
+const showCleanupDialog = ref(false)
+const showProfileWarningDialog = ref(false)
 
 const runFrequency = ref<string>('manual')
 const savingFrequency = ref(false)
@@ -209,26 +235,23 @@ async function loadDatabaseStats() {
   }
 }
 
-async function confirmCleanup() {
+function confirmCleanup() {
   if (!hasSelectedOptions.value) return
 
   // Extra confirmation for user profiles
   if (cleanupOptions.value.clean_user_profiles) {
-    const confirmed = confirm(
-      '⚠️ WARNING: You are about to delete User Profiles!\n\n' +
-      'This will remove all user profile data including CVs, skills, and preferences.\n\n' +
-      'Are you absolutely sure?'
-    )
-    if (!confirmed) return
+    showProfileWarningDialog.value = true
+  } else {
+    showCleanupDialog.value = true
   }
+}
 
-  // Final confirmation
-  const confirmed = confirm(
-    `Are you sure you want to delete:\n\n${selectedOptionsText.value}\n\n` +
-    'This action cannot be undone!'
-  )
-  if (!confirmed) return
+function handleProfileWarningConfirm() {
+  showProfileWarningDialog.value = false
+  showCleanupDialog.value = true
+}
 
+async function handleCleanupConfirm() {
   loading.value = true
   cleanupResult.value = null
 
@@ -247,12 +270,14 @@ async function confirmCleanup() {
       // Reload stats
       await loadDatabaseStats()
     }
+    showCleanupDialog.value = false
   } catch (error: any) {
     cleanupResult.value = {
       success: false,
       message: error.response?.data?.detail || 'Cleanup failed',
       deleted_counts: {}
     }
+    showCleanupDialog.value = false
   } finally {
     loading.value = false
   }
