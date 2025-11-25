@@ -19,8 +19,34 @@ def load_settings() -> dict:
 
     try:
         with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
+            settings = json.load(f)
+
+        # Validate that settings is a dict
+        if not isinstance(settings, dict):
+            raise ValueError(f"Settings file must contain a JSON object, got {type(settings)}")
+
+        # Validate run_frequency if present
+        if "run_frequency" in settings:
+            valid_frequencies = ["manual", "daily", "hourly"]
+            if settings["run_frequency"] not in valid_frequencies:
+                raise ValueError(
+                    f"Invalid run_frequency: {settings['run_frequency']}. "
+                    f"Must be one of: {', '.join(valid_frequencies)}"
+                )
+
+        return settings
+
+    except (json.JSONDecodeError, ValueError) as e:
+        # Log the error but return default settings
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to load settings from {SETTINGS_FILE}: {e}. Using defaults.")
+        return {"run_frequency": "manual"}
+    except Exception as e:
+        # Catch other errors (file permissions, etc.)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Unexpected error loading settings: {e}. Using defaults.")
         return {"run_frequency": "manual"}
 
 

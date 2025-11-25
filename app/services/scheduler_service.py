@@ -151,6 +151,10 @@ def reconfigure_scheduler(frequency: str) -> None:
     if scheduler is None:
         logger.warning("Scheduler not running, starting it now")
         start_scheduler()
+        # After starting, configure with the passed frequency parameter
+        # (start_scheduler loads from file, but we want to use the passed value)
+        configure_scheduler_jobs(frequency)
+        logger.info(f"Scheduler started and configured with frequency: {frequency}")
         return
 
     configure_scheduler_jobs(frequency)
