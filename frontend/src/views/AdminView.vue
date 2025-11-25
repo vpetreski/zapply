@@ -426,7 +426,7 @@ h1 {
 
 .label-tip {
   font-size: 0.8rem;
-  color: #4a9eff;
+  color: #999;
   font-style: italic;
   margin-top: 0.25rem;
 }
