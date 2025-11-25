@@ -348,11 +348,14 @@ onUnmounted(() => {
   background: var(--primary);
   cursor: pointer;
   border-radius: 50%;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  position: relative;
+  z-index: 2;
 }
 
 .score-slider::-webkit-slider-thumb:hover {
   background: var(--primary-light);
+  transform: scale(1.1);
 }
 
 .score-slider::-moz-range-thumb {
@@ -362,11 +365,14 @@ onUnmounted(() => {
   cursor: pointer;
   border-radius: 50%;
   border: none;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  position: relative;
+  z-index: 2;
 }
 
 .score-slider::-moz-range-thumb:hover {
   background: var(--primary-light);
+  transform: scale(1.1);
 }
 
 .loading, .empty {

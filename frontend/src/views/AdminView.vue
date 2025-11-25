@@ -1,36 +1,35 @@
 <template>
-  <div class="settings-container">
-    <h1>⚙️ Settings</h1>
-
-    <!-- Database Statistics -->
-    <section class="settings-section">
-      <h2>📊 Database Statistics</h2>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Jobs</div>
-          <div class="stat-value">{{ dbStats.jobs.toLocaleString() }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Runs</div>
-          <div class="stat-value">{{ dbStats.runs.toLocaleString() }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Application Logs</div>
-          <div class="stat-value">{{ dbStats.application_logs.toLocaleString() }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">User Profiles</div>
-          <div class="stat-value">{{ dbStats.user_profiles.toLocaleString() }}</div>
-        </div>
-      </div>
-      <button @click="loadDatabaseStats" class="btn-secondary" :disabled="loading">
-        🔄 Refresh Stats
-      </button>
-    </section>
+  <div class="admin-container">
+    <h1>🔧 Admin</h1>
 
     <!-- Database Cleanup -->
-    <section class="settings-section danger-zone">
+    <section class="admin-section danger-zone">
       <h2>🗑️ Database Cleanup</h2>
+
+      <!-- Database Statistics -->
+      <div class="db-stats-box">
+        <h3>📊 Current Database State</h3>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Jobs</div>
+            <div class="stat-value">{{ dbStats.jobs.toLocaleString() }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Runs</div>
+            <div class="stat-value">{{ dbStats.runs.toLocaleString() }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Application Logs</div>
+            <div class="stat-value">{{ dbStats.application_logs.toLocaleString() }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">User Profiles</div>
+            <div class="stat-value">{{ dbStats.user_profiles.toLocaleString() }}</div>
+          </div>
+        </div>
+        <p class="auto-refresh-note">📡 Auto-refreshes every 5 seconds</p>
+      </div>
+
       <p class="warning-text">
         ⚠️ Warning: This will permanently delete data from selected tables!
       </p>
@@ -78,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 
 interface DatabaseStats {
@@ -192,13 +191,26 @@ async function confirmCleanup() {
   }
 }
 
+// Auto-refresh interval
+let refreshInterval: number | null = null
+
 onMounted(() => {
   loadDatabaseStats()
+  // Auto-refresh stats every 5 seconds
+  refreshInterval = setInterval(() => {
+    loadDatabaseStats()
+  }, 5000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+  }
 })
 </script>
 
 <style scoped>
-.settings-container {
+.admin-container {
   max-width: 900px;
   margin: 0 auto;
 }
@@ -208,7 +220,7 @@ h1 {
   color: #e0e0e0;
 }
 
-.settings-section {
+.admin-section {
   background: #1e1e1e;
   border-radius: 8px;
   padding: 2rem;
@@ -216,19 +228,42 @@ h1 {
   border: 1px solid #333;
 }
 
-.settings-section h2 {
+.admin-section h2 {
   margin-top: 0;
   margin-bottom: 1.5rem;
   color: #e0e0e0;
   font-size: 1.3rem;
 }
 
-/* Database Stats */
+/* Database Stats Box */
+.db-stats-box {
+  background: #2a2a2a;
+  border-radius: 6px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #404040;
+}
+
+.db-stats-box h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #4a9eff;
+  font-size: 1.1rem;
+}
+
+.auto-refresh-note {
+  text-align: center;
+  color: #888;
+  font-size: 0.85rem;
+  margin-top: 1rem;
+  margin-bottom: 0;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0;
 }
 
 .stat-card {

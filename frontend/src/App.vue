@@ -8,7 +8,7 @@
         <RouterLink to="/runs">Runs</RouterLink>
         <RouterLink to="/stats">Statistics</RouterLink>
         <RouterLink to="/profile">Profile</RouterLink>
-        <RouterLink to="/settings">Settings</RouterLink>
+        <RouterLink to="/admin">Admin</RouterLink>
       </nav>
     </header>
     <main class="main">
