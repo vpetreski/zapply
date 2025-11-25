@@ -329,7 +329,7 @@ h1 {
 
 .setting-select {
   padding: 0.75rem;
-  padding-right: 2.5rem !important; /* Force right padding for dropdown arrow */
+  padding-right: 3rem !important; /* Extra right padding for dropdown arrow */
   background: #2a2a2a;
   border: 1px solid #404040;
   border-radius: 4px;
@@ -338,6 +338,8 @@ h1 {
   cursor: pointer;
   transition: border-color 0.2s;
   max-width: 400px;
+  background-position: right 0.75rem center !important; /* Position arrow with padding */
+  background-repeat: no-repeat !important;
 }
 
 .setting-select:hover:not(:disabled) {
