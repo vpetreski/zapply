@@ -14,6 +14,7 @@ from app import __version__
 from app.config import settings
 from app.database import engine
 from app.routers import admin, health, jobs, profile, runs, scraper, stats
+from app.services.scheduler_service import start_scheduler, stop_scheduler, get_scheduler_status
 
 # Configure logging
 logging.basicConfig(
@@ -40,13 +41,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("✓ Anthropic API key configured")
 
-    # TODO: Start scheduler here
+    # Start scheduler
+    try:
+        start_scheduler()
+        status = get_scheduler_status()
+        if status["running"]:
+            logger.info(f"✓ Scheduler started with {len(status['jobs'])} configured jobs")
+            for job in status["jobs"]:
+                logger.info(f"  - {job['name']}: next run at {job['next_run_time']}")
+        else:
+            logger.warning("⚠️  Scheduler failed to start")
+    except Exception as e:
+        logger.error(f"❌ Failed to start scheduler: {e}")
+
     # TODO: Initialize Playwright browser
 
     yield
 
     # Shutdown
     logger.info("Shutting down...")
+
+    # Stop scheduler
+    try:
+        stop_scheduler()
+        logger.info("✓ Scheduler stopped")
+    except Exception as e:
+        logger.error(f"❌ Error stopping scheduler: {e}")
+
     await engine.dispose()
 
 

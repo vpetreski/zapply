@@ -212,7 +212,14 @@ async def set_run_frequency(request: RunFrequencyRequest) -> RunFrequencyRespons
     settings["run_frequency"] = request.frequency
     _save_settings(settings)
 
-    # TODO: Update scheduler based on new frequency
-    # This will be implemented when we add APScheduler
+    # Reconfigure scheduler with new frequency
+    try:
+        from app.services.scheduler_service import reconfigure_scheduler
+        reconfigure_scheduler(request.frequency)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reconfigure scheduler: {str(e)}"
+        )
 
     return RunFrequencyResponse(frequency=request.frequency)
