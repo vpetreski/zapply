@@ -36,7 +36,7 @@ async def get_active_user_profile(db: AsyncSession) -> Optional[UserProfile]:
 async def match_job_with_claude(
     job: Job,
     user_profile: UserProfile,
-    client: anthropic.Anthropic
+    client: anthropic.AsyncAnthropic
 ) -> tuple[float, str]:
     """
     Match a single job against user profile using Claude AI.
@@ -91,8 +91,8 @@ Respond in this exact JSON format:
 }}"""
 
     try:
-        # Call Claude API
-        message = client.messages.create(
+        # Call Claude API (async)
+        message = await client.messages.create(
             model="claude-sonnet-4-5-20250929",
             max_tokens=2000,
             temperature=0.3,  # Lower temperature for more consistent scoring
@@ -184,9 +184,9 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = 60.0) -> dic
         add_log(run, f"Found {stats['total_jobs']} new jobs to match", "info")
         await db.commit()
 
-        # Initialize Claude client
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        add_log(run, "Initialized Claude AI client", "info")
+        # Initialize async Claude client
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        add_log(run, "Initialized Claude AI client (async)", "info")
         await db.commit()
 
         # Match each job
