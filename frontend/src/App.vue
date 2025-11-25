@@ -5,6 +5,7 @@
       <nav class="nav">
         <RouterLink to="/">Dashboard</RouterLink>
         <RouterLink to="/jobs">Jobs</RouterLink>
+        <RouterLink to="/runs">Runs</RouterLink>
         <RouterLink to="/stats">Statistics</RouterLink>
       </nav>
     </header>

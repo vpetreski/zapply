@@ -136,3 +136,52 @@ class ApplicationLog(Base):
 
     def __repr__(self) -> str:
         return f"<ApplicationLog {self.id}: Job {self.job_id} ({self.status})>"
+
+
+class RunStatus(str, Enum):
+    """Run execution status."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
+class RunPhase(str, Enum):
+    """Phases of a run."""
+
+    SCRAPING = "scraping"
+    MATCHING = "matching"
+    APPLYING = "applying"
+    REPORTING = "reporting"
+
+
+class Run(Base):
+    """Track each execution run of the automation pipeline."""
+
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Run metadata
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=RunStatus.RUNNING.value, index=True
+    )
+    phase: Mapped[str] = mapped_column(
+        String(20), nullable=False, index=True
+    )
+
+    # Statistics and logs
+    stats: Mapped[Optional[dict]] = mapped_column(JSON)  # Phase-specific stats
+    logs: Mapped[Optional[list]] = mapped_column(JSON)  # Log messages with timestamps
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Timing
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, index=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    duration_seconds: Mapped[Optional[float]] = mapped_column()
+
+    def __repr__(self) -> str:
+        return f"<Run {self.id}: {self.phase} ({self.status})>"

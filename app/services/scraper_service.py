@@ -1,11 +1,29 @@
 """Scraper service to handle job scraping and saving to database."""
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Job
+from app.models import Job, Run, RunPhase, RunStatus
 from app.schemas import JobCreate
 from app.scraper import WorkingNomadsScraper
+
+
+def add_log(run: Run, message: str, level: str = "info") -> None:
+    """Add a log entry to the run."""
+    if run.logs is None:
+        run.logs = []
+
+    run.logs.append({
+        "timestamp": datetime.utcnow().isoformat(),
+        "level": level,
+        "message": message
+    })
+
+    # Mark the logs field as modified so SQLAlchemy detects the change
+    from sqlalchemy.orm import attributes
+    attributes.flag_modified(run, "logs")
 
 
 async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
@@ -18,6 +36,20 @@ async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
     Returns:
         Dictionary with statistics: {total, new, existing, failed}
     """
+    # Create run record
+    run = Run(
+        status=RunStatus.RUNNING.value,
+        phase=RunPhase.SCRAPING.value,
+        logs=[],
+        started_at=datetime.utcnow(),
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+
+    add_log(run, "Starting job scraping from Working Nomads", "info")
+    await db.commit()
+
     stats = {
         "total": 0,
         "new": 0,
@@ -25,62 +57,110 @@ async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
         "failed": 0,
     }
 
-    # Initialize scraper
-    scraper = WorkingNomadsScraper()
+    try:
+        # Initialize scraper
+        scraper = WorkingNomadsScraper()
+        add_log(run, "Initialized Working Nomads scraper", "info")
+        await db.commit()
 
-    # Scrape jobs
-    print("🎯 Starting job scraping...")
-    jobs_data = await scraper.scrape()
-    stats["total"] = len(jobs_data)
+        # Scrape jobs
+        print("🎯 Starting job scraping...")
+        add_log(run, "Beginning job scraping process", "info")
+        await db.commit()
 
-    # Save to database
-    print(f"\n💾 Saving {len(jobs_data)} jobs to database...")
-    for job_data in jobs_data:
-        try:
-            # Check if job already exists
-            source_id = job_data.get("source_id")
-            source = job_data.get("source")
+        # Pass callback to scraper for progress updates
+        async def progress_callback(message: str, level: str = "info"):
+            add_log(run, message, level)
+            await db.commit()
 
-            existing_job = await db.execute(
-                select(Job).filter(Job.source_id == source_id, Job.source == source)
-            )
-            existing = existing_job.scalar_one_or_none()
+        jobs_data = await scraper.scrape(progress_callback=progress_callback)
+        stats["total"] = len(jobs_data)
 
-            if existing:
-                print(f"  ⏭️  Job already exists: {source_id}")
-                stats["existing"] += 1
-                continue
+        add_log(run, f"Scraped {len(jobs_data)} jobs from Working Nomads", "success")
+        await db.commit()
 
-            # Create new job
-            job = Job(
-                source=job_data["source"],
-                source_id=job_data["source_id"],
-                url=job_data["url"],
-                title=job_data["title"],
-                company=job_data["company"],
-                description=job_data["description"],
-                requirements=job_data.get("requirements"),
-                location=job_data.get("location"),
-                salary=job_data.get("salary"),
-                tags=job_data.get("tags"),
-                raw_data=job_data.get("raw_data"),
-            )
+        # Save to database
+        print(f"\n💾 Saving {len(jobs_data)} jobs to database...")
+        add_log(run, f"Saving {len(jobs_data)} jobs to database", "info")
+        await db.commit()
 
-            db.add(job)
-            stats["new"] += 1
-            print(f"  ✅ Saved: {job.title} at {job.company}")
+        for job_data in jobs_data:
+            try:
+                # Check if job already exists
+                source_id = job_data.get("source_id")
+                source = job_data.get("source")
 
-        except Exception as e:
-            stats["failed"] += 1
-            print(f"  ❌ Failed to save job: {str(e)}")
+                existing_job = await db.execute(
+                    select(Job).filter(Job.source_id == source_id, Job.source == source)
+                )
+                existing = existing_job.scalar_one_or_none()
 
-    # Commit all changes
-    await db.commit()
+                if existing:
+                    print(f"  ⏭️  Job already exists: {source_id}")
+                    stats["existing"] += 1
+                    continue
 
-    print(f"\n📊 Summary:")
-    print(f"  Total scraped: {stats['total']}")
-    print(f"  New jobs saved: {stats['new']}")
-    print(f"  Already existed: {stats['existing']}")
-    print(f"  Failed: {stats['failed']}")
+                # Create new job
+                job = Job(
+                    source=job_data["source"],
+                    source_id=job_data["source_id"],
+                    url=job_data["url"],
+                    title=job_data["title"],
+                    company=job_data["company"],
+                    description=job_data["description"],
+                    requirements=job_data.get("requirements"),
+                    location=job_data.get("location"),
+                    salary=job_data.get("salary"),
+                    tags=job_data.get("tags"),
+                    raw_data=job_data.get("raw_data"),
+                )
+
+                db.add(job)
+                stats["new"] += 1
+                print(f"  ✅ Saved: {job.title} at {job.company}")
+
+            except Exception as e:
+                stats["failed"] += 1
+                print(f"  ❌ Failed to save job: {str(e)}")
+
+        # Commit all changes
+        await db.commit()
+
+        # Complete the run
+        run.status = RunStatus.COMPLETED.value
+        run.completed_at = datetime.utcnow()
+        run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
+        run.stats = {
+            "jobs_scraped": stats["total"],
+            "new_jobs": stats["new"],
+            "duplicate_jobs": stats["existing"],
+            "failed_jobs": stats["failed"],
+            "source": "working_nomads",
+            "filters": {
+                "category": "development",
+                "location": "anywhere,colombia"
+            }
+        }
+
+        add_log(run, f"Scraping completed successfully!", "success")
+        add_log(run, f"Total: {stats['total']}, New: {stats['new']}, Duplicates: {stats['existing']}, Failed: {stats['failed']}", "info")
+        await db.commit()
+
+        print(f"\n📊 Summary:")
+        print(f"  Total scraped: {stats['total']}")
+        print(f"  New jobs saved: {stats['new']}")
+        print(f"  Already existed: {stats['existing']}")
+        print(f"  Failed: {stats['failed']}")
+
+    except Exception as e:
+        # Handle errors
+        run.status = RunStatus.FAILED.value
+        run.completed_at = datetime.utcnow()
+        run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
+        run.error_message = str(e)
+        add_log(run, f"Scraping failed: {str(e)}", "error")
+        await db.commit()
+        print(f"\n❌ Error: {str(e)}")
+        raise
 
     return stats

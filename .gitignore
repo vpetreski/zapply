@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -20,65 +23,40 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-ENV/
-env/
-.venv
-
-# uv
-.uv/
-uv.lock
+# Environment
+.env
+.env.*
+!.env.example
 
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
-.DS_Store
 
-# Environment variables
-.env
-.env.local
-.env.*.local
+# OS
+.DS_Store
+Thumbs.db
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
-postgres-data/
 
-# Logs
-*.log
-logs/
+# Test files and utilities (temporary)
+create_actual_run.py
+create_test_run.py
+fix_run.py
+update_run_time.py
+test_load_more.py
+show_more_test.png
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Frontend
+# Node
 node_modules/
-frontend/dist/
-frontend/.nuxt/
-frontend/.output/
+npm-debug.log
+yarn-error.log
 
-# Docker
-docker-compose.override.yml
-
-# Playwright
-.playwright/
-playwright-report/
-test-results/
-
-# User data
-data/
-uploads/
-cv/
-*.pdf
-!docs/*.pdf
-
-# OS
-Thumbs.db
+# Build
+dist/
+build/

@@ -78,26 +78,70 @@ class WorkingNomadsScraper(BaseScraper):
 
         print("📥 Loading all jobs...")
 
-        # Working Nomads loads jobs as you scroll, not via button
-        # Let's scroll to bottom to load all jobs
-        previous_height = 0
-        no_change_count = 0
+        # Button selectors to try
+        button_selectors = [
+            'button:has-text("Show more jobs")',
+            'button:has-text("Show more")',
+            'button:has-text("Load more")',
+            'a:has-text("Show more jobs")',
+            'a:has-text("Show more")',
+            '[class*="load-more"]',
+            '[class*="show-more"]',
+            'button[class*="more"]',
+        ]
 
-        while no_change_count < 3:
-            # Scroll to bottom
-            await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await self.page.wait_for_timeout(1500)
+        # Find initial button
+        found_button = None
+        for selector in button_selectors:
+            button = await self.page.query_selector(selector)
+            if button:
+                is_visible = await button.is_visible()
+                if is_visible:
+                    found_button = button
+                    print("   Found 'Show more jobs' button")
+                    break
 
-            # Check if height changed
-            current_height = await self.page.evaluate("document.body.scrollHeight")
+        if not found_button:
+            print("   No 'Show more jobs' button found - all jobs may already be loaded")
+            return
 
-            if current_height == previous_height:
-                no_change_count += 1
-            else:
-                no_change_count = 0
-                print(f"   Loaded more jobs... (height: {current_height})")
+        # Click button until it disappears (all jobs loaded)
+        click_count = 0
+        while click_count < 50:  # Safety limit
+            try:
+                # Check if button still exists and is visible
+                is_visible = await found_button.is_visible()
+                if not is_visible:
+                    print(f"   Button disappeared after {click_count} clicks")
+                    break
 
-            previous_height = current_height
+                await found_button.click()
+                await self.page.wait_for_timeout(2000)
+
+                click_count += 1
+
+                # Count jobs after click
+                jobs_after = await self.page.query_selector_all('a[href^="/jobs/"]')
+                unique_jobs = len(set([await j.get_attribute('href') for j in jobs_after]))
+                print(f"   Click {click_count}: Now showing {unique_jobs} jobs")
+
+                # Try to find button again (it might be re-rendered)
+                found_button = None
+                for sel in button_selectors:
+                    btn = await self.page.query_selector(sel)
+                    if btn:
+                        is_vis = await btn.is_visible()
+                        if is_vis:
+                            found_button = btn
+                            break
+
+                if not found_button:
+                    print(f"   All jobs loaded! (Total clicks: {click_count})")
+                    break
+
+            except Exception as e:
+                print(f"   Error clicking button: {e}")
+                break
 
         print("✅ All jobs loaded!")
 
@@ -220,12 +264,13 @@ class WorkingNomadsScraper(BaseScraper):
             print(f"❌ Failed to scrape job {slug}: {str(e)}")
             return None
 
-    async def scrape(self, since_days: int = 1) -> list[dict[str, Any]]:
+    async def scrape(self, since_days: int = 1, progress_callback=None) -> list[dict[str, Any]]:
         """
         Scrape jobs from Working Nomads.
 
         Args:
             since_days: Not used for initial implementation (we scrape all filtered jobs)
+            progress_callback: Optional async callback function for progress updates
 
         Returns:
             List of normalized job dictionaries
@@ -236,27 +281,40 @@ class WorkingNomadsScraper(BaseScraper):
         try:
             # Launch browser
             print("🚀 Launching browser...")
+            if progress_callback:
+                await progress_callback("Launching browser...", "info")
             playwright = await async_playwright().start()
             self.browser = await playwright.chromium.launch(headless=True)
             self.page = await self.browser.new_page()
 
             # Login
+            if progress_callback:
+                await progress_callback("Logging in to Working Nomads...", "info")
             if not await self.login():
                 return jobs
 
             # Set filters
+            if progress_callback:
+                await progress_callback("Applying filters (Development + Anywhere,Colombia)...", "info")
             await self._set_filters()
 
             # Load all jobs
+            if progress_callback:
+                await progress_callback("Loading all jobs (clicking 'Show more' until all loaded)...", "info")
             await self._load_all_jobs()
 
             # Extract job slugs
             slugs = await self._extract_job_slugs()
+            if progress_callback:
+                await progress_callback(f"Found {len(slugs)} jobs to scrape", "success")
 
             # Scrape each job
             print(f"\n📝 Scraping {len(slugs)} jobs...")
             for i, slug in enumerate(slugs, 1):
                 print(f"  [{i}/{len(slugs)}] {slug}")
+
+                if progress_callback and i % 10 == 0:
+                    await progress_callback(f"Scraping job {i}/{len(slugs)}...", "info")
 
                 job_data = await self._scrape_job_details(slug)
                 if job_data:
@@ -268,6 +326,8 @@ class WorkingNomadsScraper(BaseScraper):
                     await self.page.wait_for_timeout(1000)
 
             print(f"\n✅ Successfully scraped {len(jobs)} jobs!")
+            if progress_callback:
+                await progress_callback(f"Successfully scraped {len(jobs)} jobs!", "success")
 
         except Exception as e:
             print(f"❌ Scraping failed: {str(e)}")
