@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Job, Run, RunPhase, RunStatus
+from app.models import Job, Run, RunPhase, RunStatus, RunTriggerType
 from app.schemas import JobCreate
 from app.scraper import WorkingNomadsScraper
 from app.services.matching_service import match_jobs
@@ -27,12 +27,15 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
     attributes.flag_modified(run, "logs")
 
 
-async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
+async def scrape_and_save_jobs(
+    db: AsyncSession, trigger_type: str = RunTriggerType.MANUAL.value
+) -> dict[str, int]:
     """
     Scrape jobs from Working Nomads and save to database.
 
     Args:
         db: Database session
+        trigger_type: How the run was triggered (manual/scheduled_daily/scheduled_hourly)
 
     Returns:
         Dictionary with statistics: {total, new, existing, failed}
@@ -41,6 +44,7 @@ async def scrape_and_save_jobs(db: AsyncSession) -> dict[str, int]:
     run = Run(
         status=RunStatus.RUNNING.value,
         phase=RunPhase.SCRAPING.value,
+        trigger_type=trigger_type,
         logs=[],
         started_at=datetime.now(timezone.utc),
     )

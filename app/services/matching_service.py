@@ -103,7 +103,10 @@ Respond in this exact JSON format:
         message = await client.messages.create(
             model=settings.anthropic_model,
             max_tokens=2000,
-            temperature=0.3,  # Lower temperature for more consistent scoring
+            # Use lower temperature (0.3) for more consistent scoring across jobs
+            # Higher temp would vary scores too much for similar jobs
+            # Lower temp ensures reliable, reproducible match scores
+            temperature=0.3,
             messages=[{
                 "role": "user",
                 "content": prompt

@@ -46,6 +46,7 @@
               <div class="run-meta">
                 <span :class="['badge', `badge-${run.status}`]">{{ run.status }}</span>
                 <span :class="['badge', `badge-phase-${run.phase}`]">{{ run.phase }}</span>
+                <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(run.trigger_type) }}</span>
               </div>
             </div>
             <div class="run-times">
@@ -92,6 +93,7 @@
             <div class="run-meta">
               <span :class="['badge', `badge-${selectedRun.status}`]">{{ selectedRun.status }}</span>
               <span :class="['badge', `badge-phase-${selectedRun.phase}`]">{{ selectedRun.phase }}</span>
+              <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(selectedRun.trigger_type) }}</span>
             </div>
           </div>
           <button @click="closeRunDetail" class="btn-close">×</button>
@@ -155,11 +157,21 @@
       </div>
     </div>
   </div>
+
+  <!-- Alert Dialog -->
+  <AlertDialog
+    v-model:isOpen="showAlert"
+    title="Run Error"
+    :message="alertMessage"
+    :variant="alertVariant"
+    buttonText="OK"
+  />
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import AlertDialog from '@/components/AlertDialog.vue'
 
 const runs = ref([])
 const loading = ref(true)
@@ -171,6 +183,11 @@ const startingRun = ref(false)
 const autoScrollEnabled = ref(false)
 let autoRefreshInterval = null
 let listRefreshInterval = null
+
+// Alert dialog state
+const showAlert = ref(false)
+const alertMessage = ref('')
+const alertVariant = ref('info')
 
 // Infinite scroll
 const currentPage = ref(1)
@@ -327,6 +344,18 @@ const formatStatKey = (key) => {
     .join(' ')
 }
 
+const formatTriggerType = (triggerType) => {
+  if (!triggerType) return 'Manual'
+
+  const typeMap = {
+    'manual': 'Manual',
+    'scheduled_daily': 'Daily',
+    'scheduled_hourly': 'Hourly'
+  }
+
+  return typeMap[triggerType] || triggerType
+}
+
 const formatLogTime = (timestamp) => {
   if (!timestamp) return ''
 
@@ -399,10 +428,13 @@ const startNewRun = async () => {
     startListRefresh()
   } catch (error) {
     if (error.response && error.response.status === 409) {
-      alert('A run is already in progress. Please wait for it to complete.')
+      alertMessage.value = 'A run is already in progress. Please wait for it to complete.'
+      alertVariant.value = 'warning'
     } else {
-      alert('Failed to start run: ' + (error.response?.data?.detail || error.message))
+      alertMessage.value = 'Failed to start run: ' + (error.response?.data?.detail || error.message)
+      alertVariant.value = 'danger'
     }
+    showAlert.value = true
     console.error('Failed to start run:', error)
   } finally {
     startingRun.value = false
@@ -604,6 +636,12 @@ onUnmounted(() => {
 .badge-phase-reporting {
   background-color: rgba(251, 191, 36, 0.2);
   color: #fcd34d;
+}
+
+/* Trigger type badge */
+.badge-trigger {
+  background-color: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
 }
 
 /* Infinite Scroll */

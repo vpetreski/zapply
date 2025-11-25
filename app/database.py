@@ -51,3 +51,20 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Get a database session for background tasks and scheduler.
+
+    This is a standalone version of get_db() for use outside of FastAPI request context.
+    """
+    async with async_session_maker() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

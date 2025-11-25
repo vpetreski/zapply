@@ -13,6 +13,52 @@ from app.models import Run, RunPhase, RunStatus
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
+@router.get("/latest")
+async def get_latest_run(db: AsyncSession = Depends(get_db)) -> dict[str, Any] | None:
+    """
+    Get the latest run (active if running, otherwise most recent completed).
+
+    Returns:
+        Latest run details or null if no runs exist
+    """
+    # First try to get active (running) run
+    result = await db.execute(
+        select(Run)
+        .where(Run.status == RunStatus.RUNNING.value)
+        .order_by(Run.started_at.desc())
+        .limit(1)
+    )
+    run = result.scalar_one_or_none()
+
+    # If no active run, get most recent completed run
+    if not run:
+        result = await db.execute(
+            select(Run)
+            .order_by(Run.started_at.desc())
+            .limit(1)
+        )
+        run = result.scalar_one_or_none()
+
+    if not run:
+        return None
+
+    # Return only last 5 log entries for dashboard
+    logs = run.logs[-5:] if run.logs else []
+
+    return {
+        "id": run.id,
+        "status": run.status,
+        "phase": run.phase,
+        "trigger_type": run.trigger_type,
+        "stats": run.stats,
+        "logs": logs,  # Only last 5 entries
+        "error_message": run.error_message,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "duration_seconds": run.duration_seconds,
+    }
+
+
 @router.get("")
 async def list_runs(
     page: int = 1,
@@ -71,6 +117,7 @@ async def list_runs(
             "id": run.id,
             "status": run.status,
             "phase": run.phase,
+            "trigger_type": run.trigger_type,
             "stats": run.stats,
             "logs": run.logs,
             "error_message": run.error_message,
@@ -113,6 +160,7 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)) -> dict[str, 
         "id": run.id,
         "status": run.status,
         "phase": run.phase,
+        "trigger_type": run.trigger_type,
         "stats": run.stats,
         "logs": run.logs,
         "error_message": run.error_message,

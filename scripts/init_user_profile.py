@@ -1,4 +1,13 @@
-"""Initialize user profile with CV for matching."""
+"""Initialize user profile with CV for matching.
+
+DEPRECATED: This script is deprecated. Use the Profile UI instead:
+1. Go to http://localhost:5173/profile
+2. Upload your CV
+3. Provide custom instructions
+4. Generate profile with AI
+
+This script is kept for reference but references removed settings (user_cv_path).
+"""
 
 import asyncio
 import sys
@@ -12,6 +21,12 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import async_session_maker
 from app.models import UserProfile
+
+# Deprecation warning
+print("⚠️  WARNING: This script is DEPRECATED!")
+print("⚠️  Please use the Profile UI at http://localhost:5173/profile instead")
+print("⚠️  The UI provides better profile management with AI-powered generation")
+print()
 
 
 async def extract_cv_text_from_pdf(pdf_path: str) -> str:
@@ -129,124 +144,29 @@ WORK PREFERENCES
 
 
 async def init_user_profile():
-    """Initialize user profile from environment settings."""
-    async with async_session_maker() as db:
-        # Check if profile exists
-        result = await db.execute(select(UserProfile).limit(1))
-        existing = result.scalar_one_or_none()
+    """Initialize user profile from environment settings.
 
-        if existing:
-            print(f"✅ User profile already exists: {existing.name}")
-            print(f"   Email: {existing.email}")
-            print(f"   Location: {existing.location}")
-            print(f"   Rate: {existing.rate}")
-            return
+    DEPRECATED: This function references removed settings.
+    Use the Profile UI instead.
+    """
+    print("❌ ERROR: This script is deprecated and cannot run.")
+    print("❌ The following settings were removed: user_cv_path, user_name, user_email")
+    print()
+    print("✅ Please use the Profile UI instead:")
+    print("   1. Start the backend: just dev-backend")
+    print("   2. Start the frontend: just dev-frontend")
+    print("   3. Go to: http://localhost:5173/profile")
+    print("   4. Upload your CV and generate profile with AI")
+    return
 
-        # Extract CV text
-        print(f"📄 Processing CV from: {settings.user_cv_path}")
-        cv_text = await extract_cv_text_from_pdf(settings.user_cv_path)
-
-        # Create user profile
-        profile = UserProfile(
-            name=settings.user_name,
-            email=settings.user_email,
-            location=settings.user_location,
-            rate=settings.user_rate,
-            cv_path=settings.user_cv_path,
-            cv_text=cv_text,
-            skills=[
-                # Core Backend (20 years experience)
-                "Java",
-                "Kotlin",
-                "Spring Boot",
-                "Spring Security",
-                "Microservices",
-                "Event-Driven Architecture",
-                "REST APIs",
-                "GraphQL",
-                "gRPC",
-
-                # Modern AI-Native Development
-                "Python",
-                "FastAPI",
-                "Claude Code",
-                "Cursor",
-                "Claude API",
-                "OpenAI API",
-                "LLM Integration",
-                "AI-Native Development",
-
-                # Cloud & Infrastructure
-                "AWS",
-                "AWS IoT",
-                "CloudFormation",
-                "ECS",
-                "Fargate",
-                "RDS",
-                "S3",
-                "Docker",
-                "Kubernetes",
-                "Terraform",
-
-                # Databases & Messaging
-                "PostgreSQL",
-                "MySQL",
-                "MongoDB",
-                "Redis",
-                "Kafka",
-                "BigData",
-
-                # Frontend (when needed)
-                "Vue.js",
-                "TypeScript",
-                "Flutter",
-                "Dart",
-                "Firebase",
-
-                # DevOps & Tools
-                "CI/CD",
-                "DevOps",
-                "Git",
-                "GitHub Actions",
-                "Maven",
-                "Gradle",
-
-                # Architecture & Leadership
-                "Software Architecture",
-                "Technical Leadership",
-                "Team Leadership",
-                "System Design",
-                "Fintech",
-                "Healthcare",
-                "IoT",
-            ],
-            preferences={
-                "rate_monthly": 10000,
-                "min_rate": 8000,
-                "max_rate": 15000,
-                "remote_only": True,
-                "contractor_only": True,
-                "location_restrictions": "NO US work authorization - must accept international contractors or hire in Latam/Colombia",
-                "preferred_industries": ["Fintech", "Healthcare", "SaaS", "AI/ML", "Enterprise Software"],
-                "company_size": ["startup", "scale-up", "enterprise"],
-                "willing_to_relocate": False,
-                "citizenship": ["Colombia", "Serbia"],
-                "timezone": "UTC-5 (Colombia)",
-                "availability": "Immediate",
-            }
-        )
-
-        db.add(profile)
-        await db.commit()
-        await db.refresh(profile)
-
-        print(f"\n✅ Created user profile!")
-        print(f"   Name: {profile.name}")
-        print(f"   Email: {profile.email}")
-        print(f"   Location: {profile.location}")
-        print(f"   Rate: {profile.rate}")
-        print(f"   Skills: {len(profile.skills)} skills added")
-        print(f"   CV: {len(cv_text)} characters")
+    # Old code removed - it referenced settings that no longer exist:
+    # - settings.user_cv_path
+    # - settings.user_name
+    # - settings.user_email
+    # - settings.user_location
+    # - settings.user_rate
+    #
+    # The entire function has been deprecated in favor of the Profile UI.
 
 
 if __name__ == "__main__":

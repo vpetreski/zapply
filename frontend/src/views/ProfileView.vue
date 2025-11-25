@@ -223,11 +223,24 @@
       </div>
     </div>
   </div>
+
+  <!-- Delete Confirmation Dialog -->
+  <ConfirmDialog
+    v-model:isOpen="showDeleteDialog"
+    title="Delete Profile"
+    message="This will permanently delete your profile! All profile data including CV, skills, and preferences will be removed. This action cannot be undone."
+    confirmText="Delete Profile"
+    cancelText="Cancel"
+    processingText="Deleting..."
+    variant="danger"
+    @confirm="handleDeleteConfirm"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 interface Profile {
   id: number
@@ -256,6 +269,7 @@ const saving = ref(false)
 const profile = ref<Profile | null>(null)
 const editMode = ref(false)
 const error = ref('')
+const showDeleteDialog = ref(false)
 
 const formData = ref({
   name: '',
@@ -401,23 +415,21 @@ async function saveProfile() {
   }
 }
 
-async function confirmDelete() {
-  const confirmed = confirm(
-    '⚠️ WARNING: This will permanently delete your profile!\n\n' +
-    'All profile data including CV, skills, and preferences will be removed.\n\n' +
-    'Are you sure?'
-  )
+function confirmDelete() {
+  showDeleteDialog.value = true
+}
 
-  if (!confirmed) return
-
+async function handleDeleteConfirm() {
   loading.value = true
   error.value = ''
 
   try {
     await axios.delete('/api/profile')
     profile.value = null
+    showDeleteDialog.value = false
   } catch (err: any) {
     error.value = `Failed to delete profile: ${err.response?.data?.detail || err.message}`
+    showDeleteDialog.value = false
   } finally {
     loading.value = false
   }

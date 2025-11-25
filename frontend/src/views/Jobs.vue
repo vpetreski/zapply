@@ -308,6 +308,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  overflow: visible; /* Ensure slider thumb isn't clipped */
 }
 
 .filter-group label {
@@ -333,40 +334,92 @@ onUnmounted(() => {
 
 .score-slider {
   width: 120px;
+  height: 20px; /* Increased from 6px to provide space for thumb */
+  background: transparent;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+
+/* Webkit (Chrome/Safari) track */
+.score-slider::-webkit-slider-runnable-track {
+  width: 100%;
   height: 6px;
   background: var(--bg-darker);
   border-radius: 3px;
-  outline: none;
-  -webkit-appearance: none;
+  cursor: pointer;
 }
 
+/* Webkit thumb */
 .score-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  background: var(--primary);
-  cursor: pointer;
-  border-radius: 50%;
-  transition: background 0.2s;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 18px !important;
+  height: 18px !important;
+  background: var(--primary) !important;
+  cursor: grab !important;
+  border-radius: 50% !important;
+  border: 3px solid #fff !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+  position: relative !important;
+  z-index: 999 !important;
+  margin-top: -6px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .score-slider::-webkit-slider-thumb:hover {
-  background: var(--primary-light);
+  background: var(--primary-light) !important;
+  border-color: #fff !important;
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.8) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
-.score-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  background: var(--primary);
-  cursor: pointer;
-  border-radius: 50%;
+.score-slider::-webkit-slider-thumb:active {
+  cursor: grabbing !important;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 1) !important;
+}
+
+/* Firefox track */
+.score-slider::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-darker);
+  border-radius: 3px;
   border: none;
-  transition: background 0.2s;
+  cursor: pointer;
+}
+
+/* Firefox thumb */
+.score-slider::-moz-range-thumb {
+  width: 18px !important;
+  height: 18px !important;
+  background: var(--primary) !important;
+  cursor: grab !important;
+  border-radius: 50% !important;
+  border: 3px solid #fff !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+  position: relative !important;
+  z-index: 999 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .score-slider::-moz-range-thumb:hover {
-  background: var(--primary-light);
+  background: var(--primary-light) !important;
+  border-color: #fff !important;
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.8) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.score-slider::-moz-range-thumb:active {
+  cursor: grabbing !important;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 1) !important;
 }
 
 .loading, .empty {

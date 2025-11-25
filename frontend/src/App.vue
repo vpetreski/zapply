@@ -1,14 +1,16 @@
 <template>
   <div id="app" class="app">
     <header class="header">
-      <h1>⚡ Zapply</h1>
+      <RouterLink to="/" class="logo-link">
+        <h1>⚡ Zapply</h1>
+      </RouterLink>
       <nav class="nav">
         <RouterLink to="/">Dashboard</RouterLink>
         <RouterLink to="/jobs">Jobs</RouterLink>
         <RouterLink to="/runs">Runs</RouterLink>
         <RouterLink to="/stats">Statistics</RouterLink>
         <RouterLink to="/profile">Profile</RouterLink>
-        <RouterLink to="/settings">Settings</RouterLink>
+        <RouterLink to="/admin">Admin</RouterLink>
       </nav>
     </header>
     <main class="main">
@@ -52,9 +54,19 @@ body {
   align-items: center;
 }
 
+.logo-link {
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.logo-link:hover {
+  opacity: 0.8;
+}
+
 .header h1 {
   font-size: 1.5rem;
   color: #3b82f6;
+  cursor: pointer;
 }
 
 .nav {

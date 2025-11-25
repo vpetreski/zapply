@@ -1,36 +1,63 @@
 <template>
-  <div class="settings-container">
-    <h1>⚙️ Settings</h1>
+  <div class="admin-container">
+    <h1>🔧 Admin</h1>
 
-    <!-- Database Statistics -->
-    <section class="settings-section">
-      <h2>📊 Database Statistics</h2>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Jobs</div>
-          <div class="stat-value">{{ dbStats.jobs.toLocaleString() }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Runs</div>
-          <div class="stat-value">{{ dbStats.runs.toLocaleString() }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Application Logs</div>
-          <div class="stat-value">{{ dbStats.application_logs.toLocaleString() }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">User Profiles</div>
-          <div class="stat-value">{{ dbStats.user_profiles.toLocaleString() }}</div>
-        </div>
+    <!-- Settings -->
+    <section class="admin-section">
+      <h2>⚙️ Settings</h2>
+
+      <div class="setting-item">
+        <label for="run-frequency" class="setting-label">
+          <span class="label-text">Run Frequency</span>
+          <span class="label-description">Configure how often the automation pipeline runs (scraping, matching, applying)</span>
+        </label>
+        <select
+          id="run-frequency"
+          v-model="runFrequency"
+          @change="saveRunFrequency"
+          class="setting-select"
+          :disabled="savingFrequency"
+          style="padding-right: 3rem;"
+        >
+          <option value="manual">Manual</option>
+          <option value="daily">Daily (9pm Colombian time)</option>
+          <option value="hourly">Hourly (at the start of every hour)</option>
+        </select>
       </div>
-      <button @click="loadDatabaseStats" class="btn-secondary" :disabled="loading">
-        🔄 Refresh Stats
-      </button>
+
+      <div v-if="frequencyResult" class="result-message" :class="frequencyResult.success ? 'success' : 'error'">
+        {{ frequencyResult.message }}
+      </div>
     </section>
 
     <!-- Database Cleanup -->
-    <section class="settings-section danger-zone">
+    <section class="admin-section danger-zone">
       <h2>🗑️ Database Cleanup</h2>
+
+      <!-- Database Statistics -->
+      <div class="db-stats-box">
+        <h3>📊 Current Database State</h3>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Jobs</div>
+            <div class="stat-value">{{ dbStats.jobs.toLocaleString() }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Runs</div>
+            <div class="stat-value">{{ dbStats.runs.toLocaleString() }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Application Logs</div>
+            <div class="stat-value">{{ dbStats.application_logs.toLocaleString() }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">User Profiles</div>
+            <div class="stat-value">{{ dbStats.user_profiles.toLocaleString() }}</div>
+          </div>
+        </div>
+        <p class="auto-refresh-note">📡 Auto-refreshes every 5 seconds</p>
+      </div>
+
       <p class="warning-text">
         ⚠️ Warning: This will permanently delete data from selected tables!
       </p>
@@ -75,11 +102,35 @@
       </div>
     </section>
   </div>
+
+  <!-- Profile Warning Dialog (shown first if deleting profiles) -->
+  <ConfirmDialog
+    v-model:isOpen="showProfileWarningDialog"
+    title="Delete User Profiles?"
+    message="You are about to delete User Profiles! This will remove all user profile data including CVs, skills, and preferences. This is a critical operation. Are you absolutely sure?"
+    confirmText="Yes, Continue"
+    cancelText="Cancel"
+    variant="danger"
+    @confirm="handleProfileWarningConfirm"
+  />
+
+  <!-- Cleanup Confirmation Dialog -->
+  <ConfirmDialog
+    v-model:isOpen="showCleanupDialog"
+    title="Confirm Database Cleanup"
+    :message="`Are you sure you want to delete: ${selectedOptionsText}?\n\nThis action cannot be undone!`"
+    confirmText="Delete Data"
+    cancelText="Cancel"
+    processingText="Deleting..."
+    variant="danger"
+    @confirm="handleCleanupConfirm"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 interface DatabaseStats {
   jobs: number
@@ -117,6 +168,12 @@ const cleanupOptions = ref<CleanupOptions>({
 })
 
 const cleanupResult = ref<CleanupResult | null>(null)
+const showCleanupDialog = ref(false)
+const showProfileWarningDialog = ref(false)
+
+const runFrequency = ref<string>('manual')
+const savingFrequency = ref(false)
+const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
 
 const hasSelectedOptions = computed(() => {
   return Object.values(cleanupOptions.value).some(v => v)
@@ -131,6 +188,41 @@ const selectedOptionsText = computed(() => {
   return selected.join(', ')
 })
 
+async function loadRunFrequency() {
+  try {
+    const response = await axios.get('/api/admin/settings/run-frequency')
+    runFrequency.value = response.data.frequency
+  } catch (error) {
+    console.error('Failed to load run frequency:', error)
+  }
+}
+
+async function saveRunFrequency() {
+  savingFrequency.value = true
+  frequencyResult.value = null
+
+  try {
+    await axios.post('/api/admin/settings/run-frequency', {
+      frequency: runFrequency.value
+    })
+    frequencyResult.value = {
+      success: true,
+      message: `✓ Run frequency set to: ${runFrequency.value}`
+    }
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      frequencyResult.value = null
+    }, 3000)
+  } catch (error: any) {
+    frequencyResult.value = {
+      success: false,
+      message: error.response?.data?.detail || 'Failed to save run frequency'
+    }
+  } finally {
+    savingFrequency.value = false
+  }
+}
+
 async function loadDatabaseStats() {
   loading.value = true
   try {
@@ -143,26 +235,23 @@ async function loadDatabaseStats() {
   }
 }
 
-async function confirmCleanup() {
+function confirmCleanup() {
   if (!hasSelectedOptions.value) return
 
   // Extra confirmation for user profiles
   if (cleanupOptions.value.clean_user_profiles) {
-    const confirmed = confirm(
-      '⚠️ WARNING: You are about to delete User Profiles!\n\n' +
-      'This will remove all user profile data including CVs, skills, and preferences.\n\n' +
-      'Are you absolutely sure?'
-    )
-    if (!confirmed) return
+    showProfileWarningDialog.value = true
+  } else {
+    showCleanupDialog.value = true
   }
+}
 
-  // Final confirmation
-  const confirmed = confirm(
-    `Are you sure you want to delete:\n\n${selectedOptionsText.value}\n\n` +
-    'This action cannot be undone!'
-  )
-  if (!confirmed) return
+function handleProfileWarningConfirm() {
+  showProfileWarningDialog.value = false
+  showCleanupDialog.value = true
+}
 
+async function handleCleanupConfirm() {
   loading.value = true
   cleanupResult.value = null
 
@@ -181,24 +270,40 @@ async function confirmCleanup() {
       // Reload stats
       await loadDatabaseStats()
     }
+    showCleanupDialog.value = false
   } catch (error: any) {
     cleanupResult.value = {
       success: false,
       message: error.response?.data?.detail || 'Cleanup failed',
       deleted_counts: {}
     }
+    showCleanupDialog.value = false
   } finally {
     loading.value = false
   }
 }
 
+// Auto-refresh interval
+let refreshInterval: number | null = null
+
 onMounted(() => {
+  loadRunFrequency()
   loadDatabaseStats()
+  // Auto-refresh stats every 5 seconds
+  refreshInterval = setInterval(() => {
+    loadDatabaseStats()
+  }, 5000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+  }
 })
 </script>
 
 <style scoped>
-.settings-container {
+.admin-container {
   max-width: 900px;
   margin: 0 auto;
 }
@@ -208,7 +313,7 @@ h1 {
   color: #e0e0e0;
 }
 
-.settings-section {
+.admin-section {
   background: #1e1e1e;
   border-radius: 8px;
   padding: 2rem;
@@ -216,19 +321,106 @@ h1 {
   border: 1px solid #333;
 }
 
-.settings-section h2 {
+.admin-section h2 {
   margin-top: 0;
   margin-bottom: 1.5rem;
   color: #e0e0e0;
   font-size: 1.3rem;
 }
 
-/* Database Stats */
+/* Settings Section */
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label-text {
+  font-weight: 600;
+  color: #e0e0e0;
+  font-size: 1rem;
+}
+
+.label-description {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.setting-select {
+  padding: 0.75rem;
+  padding-right: 3rem !important;
+  background-color: #2a2a2a;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  max-width: 400px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.setting-select:hover:not(:disabled) {
+  border-color: #4a9eff;
+}
+
+.setting-select:focus {
+  outline: none;
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+}
+
+.setting-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setting-select option {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+/* Database Stats Box */
+.db-stats-box {
+  background: #2a2a2a;
+  border-radius: 6px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #404040;
+}
+
+.db-stats-box h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #4a9eff;
+  font-size: 1.1rem;
+}
+
+.auto-refresh-note {
+  text-align: center;
+  color: #888;
+  font-size: 0.85rem;
+  margin-top: 1rem;
+  margin-bottom: 0;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0;
 }
 
 .stat-card {
