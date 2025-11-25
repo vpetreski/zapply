@@ -279,12 +279,9 @@ uv add anthropic
 # .env file
 ANTHROPIC_API_KEY=sk-ant-...  # Your Claude API key
 
-# User Profile (already in config.py)
-USER_NAME="Vanja Petreski"
-USER_EMAIL="vanja@petreski.co"
-USER_LOCATION="Colombia"
-USER_RATE="$10,000/month"
-USER_CV_PATH="docs/Resume-Vanja-Petreski.pdf"
+# User Profile - Now managed via /profile UI page
+# These settings are deprecated and no longer used
+# Profile is managed through the web UI at http://localhost:5173/profile
 ```
 
 ### Matching Threshold

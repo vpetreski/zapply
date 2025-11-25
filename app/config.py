@@ -24,12 +24,12 @@ class Settings(BaseSettings):
     scheduler_interval_minutes: int = 60
     scraper_initial_days: int = 14  # Fetch last 2 weeks on first run
 
-    # User Profile
-    user_name: str = "Vanja Petreski"
-    user_email: str = "vanja@petreski.co"
-    user_location: str = "Colombia"
-    user_rate: str = "$10,000/month"
-    user_cv_path: str = "docs/Resume-Vanja-Petreski.pdf"
+    # User Profile (legacy - now managed via UI at /profile)
+    # These settings are deprecated and no longer used
+    user_name: str = ""
+    user_email: str = ""
+    user_location: str = ""
+    user_rate: str = ""
 
     # Application Settings
     max_concurrent_applications: int = 3

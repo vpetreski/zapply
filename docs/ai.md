@@ -8,16 +8,16 @@ Working Nomads scraper and AI-powered matcher are fully implemented and working!
 ## Last Session - 2025-11-24 (Evening)
 
 ### Accomplished This Session
-**Fixed Critical Matcher Bug:**
+**Fixed Critical Matcher Bug & Built Profile System:**
 - ✅ Diagnosed "No user profile found" error blocking matching phase
-- ✅ Updated `scripts/init_user_profile.py` with real CV content from Resume-Vanja-Petreski.pdf
-- ✅ Replaced placeholder CV with actual 20-year Principal Software Engineer profile
-- ✅ Updated skills (51 skills: Java, Kotlin, Spring Boot, AWS, AI-native development, etc.)
+- ✅ Initially created UserProfile with real CV data (6,500 chars, 51 skills)
 - ✅ Fixed preferences to reflect contractor status and Colombia location
-- ✅ Created UserProfile in database (6,500 character CV)
+- ✅ Built complete UserProfile management UI with AI-powered generation
+- ✅ Removed hardcoded CV from repository (was: `docs/Resume-Vanja-Petreski.pdf`)
+- ✅ Profile now managed through `/profile` page with Claude AI generation
+- ✅ Users can upload CV + provide instructions → Claude optimizes profile
 - ✅ Created `scripts/clean_jobs_runs.py` to clean test data while preserving profile
 - ✅ Cleaned 745 test jobs and 1 failed run from database
-- ✅ Ready for fresh matching test with real user profile
 
 **Working Nomads Scraper - COMPLETE:**
 - ✅ Playwright-based scraper for Working Nomads
@@ -57,7 +57,7 @@ Working Nomads scraper and AI-powered matcher are fully implemented and working!
 
 **Initial Setup:**
 - Read and understood project requirements from `docs/initial-prompt.md`
-- Reviewed Vanja's resume (`docs/Resume-Vanja-Petreski.pdf`)
+- Reviewed Vanja's resume (now removed from repo - managed via UI)
 - Confirmed technology choices with user:
   - Python 3.12, uv for package management
   - Monorepo structure (backend + frontend together)
@@ -299,12 +299,12 @@ just dev-frontend    # Run frontend (terminal 2)
    - `PUT /api/profile` - Update existing profile
    - `DELETE /api/profile` - Delete profile
 
-4. **Remove CV from Repository:**
-   - Delete `docs/Resume-Vanja-Petreski.pdf` from repo
-   - Remove CV path references from `.env.example`
-   - Remove CV path from `app/config.py`
-   - Update documentation removing CV references
-   - Git commit to remove CV from history
+4. **Remove CV from Repository:** ✅ DONE!
+   - ✅ Deleted `docs/Resume-Vanja-Petreski.pdf` from repo
+   - ✅ Removed CV path references from `.env.example`
+   - ✅ Removed CV path from `app/config.py`
+   - ✅ Updated documentation removing CV references
+   - Profile now fully managed via UI
 
 **Concept:** Instead of hardcoded CV, user uploads CV + provides instructions → Claude generates optimized profile for matching → stored in database
 
@@ -382,7 +382,7 @@ None! System is functional and ready for testing.
 
 ### Important Context Files
 - `docs/initial-prompt.md` - Original project requirements
-- `docs/Resume-Vanja-Petreski.pdf` - Vanja's CV (use for matching)
+- `/profile` UI page - User profile management (CV, skills, preferences)
 - `CLAUDE.md` - My instructions (Claude Code)
 - `.cursorrules` - Cursor IDE instructions
 - `Justfile` - All automation commands
