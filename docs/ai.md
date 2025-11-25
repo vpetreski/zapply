@@ -268,6 +268,14 @@ just dev-frontend    # Run frontend (terminal 2)
 - Expected completion: ~15-20 minutes
 - **Check results in the morning!**
 
+**NEW: Settings Page Added (23:50):**
+- ⚙️ **Database cleanup functionality now in UI!**
+- Navigate to Settings page (http://localhost:5173/settings)
+- View real-time database statistics (jobs, runs, logs, profiles)
+- Selective cleanup with checkboxes
+- Safety confirmations prevent accidental deletions
+- No need for manual cleanup scripts anymore!
+
 **Immediate Next Steps (Tomorrow Morning):**
 0. **Review overnight Run #1 results:**
    - Check run status: `GET /api/runs/1`
@@ -287,9 +295,10 @@ just dev-frontend    # Run frontend (terminal 2)
    - Review what goes into matching prompt
    - This directly influences matching quality - must be done properly
 
-3. **Review database cleanup logic** - Check `scripts/clean_jobs_runs.py`
-   - Verify it preserves UserProfile correctly
-   - Understand what gets deleted vs. preserved
+3. **Review database cleanup UI** - ✅ ALREADY DONE!
+   - Settings page added with database cleanup functionality
+   - Can now clean database from UI with selective options
+   - Scripts still available but UI is preferred method
 
 4. **Implement UserProfile view in UI:**
    - Add `/api/profile` endpoint to get user profile
