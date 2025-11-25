@@ -2,6 +2,9 @@
   <div class="admin-container">
     <h1>🔧 Admin</h1>
 
+    <!-- Profile Warning Banner -->
+    <ProfileWarningBanner />
+
     <!-- Settings -->
     <section class="admin-section">
       <h2>⚙️ Settings</h2>
@@ -131,6 +134,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
 interface DatabaseStats {
   jobs: number

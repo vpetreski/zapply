@@ -37,6 +37,12 @@ class ProfileResponse(BaseModel):
     updated_at: datetime
 
 
+class ProfileExistsResponse(BaseModel):
+    """Response indicating if a profile exists."""
+
+    exists: bool
+
+
 class GenerateProfileRequest(BaseModel):
     """Request to generate profile using Claude AI."""
 
@@ -67,6 +73,19 @@ class UpdateProfileRequest(BaseModel):
     cv_text: str
     skills: list[str]
     preferences: dict
+
+
+@router.get("/exists", response_model=ProfileExistsResponse)
+async def check_profile_exists(db: AsyncSession = Depends(get_db)) -> ProfileExistsResponse:
+    """
+    Check if a user profile exists.
+
+    Returns a simple boolean indicating profile existence.
+    Fast endpoint for UI to check profile status.
+    """
+    result = await db.execute(select(UserProfile).limit(1))
+    profile = result.scalar_one_or_none()
+    return ProfileExistsResponse(exists=profile is not None)
 
 
 @router.get("", response_model=Optional[ProfileResponse])

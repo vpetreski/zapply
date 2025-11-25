@@ -1,6 +1,10 @@
 <template>
   <div class="dashboard">
     <h2>Dashboard</h2>
+
+    <!-- Profile Warning Banner -->
+    <ProfileWarningBanner />
+
     <div class="grid grid-3" style="margin-top: 2rem;">
       <div class="card stat-card">
         <h3>Total Jobs</h3>
@@ -90,6 +94,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
 const stats = ref({
   total_jobs: 0,

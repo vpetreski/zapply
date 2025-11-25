@@ -1,5 +1,8 @@
 <template>
   <div class="jobs">
+    <!-- Profile Warning Banner -->
+    <ProfileWarningBanner />
+
     <div class="jobs-header">
       <h2>Jobs ({{ total }} total)</h2>
       <div class="filters">
@@ -145,6 +148,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
 const jobs = ref([])
 const loading = ref(true)

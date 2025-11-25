@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_maker, get_db
-from app.models import Run, RunStatus
+from app.models import Run, RunStatus, UserProfile
 from app.services.scraper_service import scrape_and_save_jobs
 
 limiter = Limiter(key_func=get_remote_address)
@@ -41,9 +41,10 @@ async def run_scraper(request: Request, db: AsyncSession = Depends(get_db)) -> S
     Manually trigger job scraping from Working Nomads.
 
     This will:
-    1. Check if there's already a running run
-    2. Start the scraping process in the background
-    3. Return immediately with the run ID
+    1. Check if user profile exists (REQUIRED)
+    2. Check if there's already a running run
+    3. Start the scraping process in the background
+    4. Return immediately with the run ID
 
     The scraping process will:
     - Login to Working Nomads
@@ -51,9 +52,20 @@ async def run_scraper(request: Request, db: AsyncSession = Depends(get_db)) -> S
     - Load all jobs
     - Scrape each job's details
     - Save new jobs to database (skip existing ones)
+    - Match jobs against user profile
 
     Returns the run ID for tracking.
     """
+    # Check if user profile exists - REQUIRED
+    result = await db.execute(select(UserProfile).limit(1))
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        raise HTTPException(
+            status_code=400,
+            detail="No user profile found. Please create a profile before running the scraper."
+        )
+
     # Check for existing running runs
     result = await db.execute(
         select(Run).where(Run.status == RunStatus.RUNNING.value).limit(1)

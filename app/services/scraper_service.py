@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Job, Run, RunPhase, RunStatus, RunTriggerType
+from app.models import Job, Run, RunPhase, RunStatus, RunTriggerType, UserProfile
 from app.schemas import JobCreate
 from app.scraper import WorkingNomadsScraper
 from app.services.matching_service import match_jobs
@@ -39,7 +39,20 @@ async def scrape_and_save_jobs(
 
     Returns:
         Dictionary with statistics: {total, new, existing, failed}
+
+    Raises:
+        ValueError: If no user profile exists
     """
+    # Check if user profile exists - REQUIRED for matching
+    result = await db.execute(select(UserProfile).limit(1))
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        raise ValueError(
+            "No user profile found. Please create a profile before running the scraper. "
+            "The profile is required for job matching."
+        )
+
     # Create run record
     run = Run(
         status=RunStatus.RUNNING.value,
