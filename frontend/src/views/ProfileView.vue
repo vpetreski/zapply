@@ -532,20 +532,21 @@ h1 {
 .no-profile {
   text-align: center;
   padding: 3rem;
-  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+  background: linear-gradient(135deg, #ff9966 0%, #ff6b6b 100%);
   border-radius: 8px;
-  border: 2px solid #fca5a5;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+  border: 2px solid #ffb399;
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.2);
 }
 
 .no-profile h2 {
   color: white;
   margin-bottom: 1rem;
   font-size: 1.5rem;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .no-profile p {
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
   margin-bottom: 2rem;
   font-size: 1.1rem;
 }
