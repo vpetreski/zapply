@@ -17,6 +17,7 @@
           @change="saveRunFrequency"
           class="setting-select"
           :disabled="savingFrequency"
+          style="padding-right: 3rem;"
         >
           <option value="manual">Manual</option>
           <option value="daily">Daily (9pm Colombian time)</option>
