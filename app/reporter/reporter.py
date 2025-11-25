@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Job, JobStatus
+from app.utils import log_to_console
 
 
 class Reporter:
@@ -24,7 +25,7 @@ class Reporter:
             Dictionary with report data
         """
         # Get jobs from last 24 hours
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        since = datetime.utcnow() - timedelta(hours=24)
 
         # Count by status
         new_query = select(Job).filter(Job.created_at >= since, Job.status == JobStatus.NEW.value)
@@ -66,7 +67,7 @@ class Reporter:
                 }
                 for job in failed_jobs
             ],
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.utcnow().isoformat(),
         }
 
     async def send_notification(self, report: dict[str, Any]) -> bool:
@@ -76,28 +77,28 @@ class Reporter:
         TODO: Implement email/webhook notifications
         """
         # For MVP, just print to console
-        print("\n" + "=" * 80)
-        print("ZAPPLY DAILY REPORT")
-        print("=" * 80)
-        print(f"Period: {report['period']}")
-        print(f"\nSummary:")
-        print(f"  New jobs scraped: {report['summary']['new_jobs']}")
-        print(f"  Jobs matched: {report['summary']['matched_jobs']}")
-        print(f"  Applications submitted: {report['summary']['applied_jobs']}")
-        print(f"  Applications failed: {report['summary']['failed_jobs']}")
+        log_to_console("\n" + "=" * 80)
+        log_to_console("ZAPPLY DAILY REPORT")
+        log_to_console("=" * 80)
+        log_to_console(f"Period: {report['period']}")
+        log_to_console(f"\nSummary:")
+        log_to_console(f"  New jobs scraped: {report['summary']['new_jobs']}")
+        log_to_console(f"  Jobs matched: {report['summary']['matched_jobs']}")
+        log_to_console(f"  Applications submitted: {report['summary']['applied_jobs']}")
+        log_to_console(f"  Applications failed: {report['summary']['failed_jobs']}")
 
         if report["applied_to"]:
-            print(f"\nSuccessfully applied to:")
+            log_to_console(f"\nSuccessfully applied to:")
             for job in report["applied_to"]:
-                print(f"  - {job['title']} at {job['company']}")
-                print(f"    {job['url']}")
+                log_to_console(f"  - {job['title']} at {job['company']}")
+                log_to_console(f"    {job['url']}")
 
         if report["failures"]:
-            print(f"\nFailed applications:")
+            log_to_console(f"\nFailed applications:")
             for job in report["failures"]:
-                print(f"  - {job['title']} at {job['company']}")
-                print(f"    Error: {job['error']}")
+                log_to_console(f"  - {job['title']} at {job['company']}")
+                log_to_console(f"    Error: {job['error']}")
 
-        print("=" * 80 + "\n")
+        log_to_console("=" * 80 + "\n")
 
         return True

@@ -75,6 +75,9 @@ db-reset:
 
 # Development: Run backend server
 dev-backend:
+    #!/usr/bin/env bash
+    unset ANTHROPIC_API_KEY
+    export PYTHONUNBUFFERED=1
     uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Development: Run frontend dev server

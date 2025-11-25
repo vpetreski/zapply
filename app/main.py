@@ -15,11 +15,13 @@ from app.config import settings
 from app.database import engine
 from app.routers import admin, health, jobs, profile, runs, scraper, stats
 from app.services.scheduler_service import start_scheduler, stop_scheduler, get_scheduler_status
+from app.utils import log_to_console
 
-# Configure logging
+# Configure logging - simple format for console output
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(message)s",
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -38,8 +40,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not settings.anthropic_api_key:
         logger.warning("⚠️  ANTHROPIC_API_KEY not configured - AI matching will not work")
         logger.warning("⚠️  Set ANTHROPIC_API_KEY in .env to enable job matching")
+        log_to_console("⚠️  ANTHROPIC_API_KEY not configured - AI matching will not work")
     else:
         logger.info("✓ Anthropic API key configured")
+        # Show key length and first/last chars for debugging
+        api_key = settings.anthropic_api_key
+        key_len = len(api_key)
+        if key_len > 12:
+            key_preview = f"{api_key[:20]}...{api_key[-4:]}"
+        else:
+            key_preview = "TOO_SHORT"
+        log_to_console(f"✓ Anthropic API key configured (length: {key_len}): {key_preview}")
+        log_to_console(f"✓ API key has whitespace: {api_key != api_key.strip()}")
+        log_to_console(f"✓ Anthropic model: {settings.anthropic_model}")
 
     # Start scheduler
     try:

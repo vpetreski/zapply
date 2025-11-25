@@ -319,7 +319,7 @@ async def update_profile(
         profile.skills = request.skills
         profile.preferences = request.preferences
         profile.ai_generated_summary = request.ai_generated_summary
-        profile.updated_at = datetime.now(timezone.utc)
+        profile.updated_at = datetime.utcnow()
     else:
         # Create new profile
         profile = UserProfile(

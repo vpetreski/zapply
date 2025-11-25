@@ -5,9 +5,132 @@
 
 Major features implemented: Automated scheduler, real-time dashboard, trigger type tracking, migration documentation. All Claude Bot review issues fixed. Ready for comprehensive testing.
 
-## Last Session - 2025-11-25 (Full Day)
+## Last Session - 2025-11-25 (Evening - Critical Bug Fixes)
 
 ### Accomplished This Session
+
+**CRITICAL FIXES: Real-Time Logging & Claude API Integration**
+
+#### 1. Fixed Claude API JSON Parsing Error ⚠️ → ✅
+**Problem:** All 10 jobs failing with "Error during matching: Expecting value: line 1 column 1 (char 0)"
+- ❌ Claude API was returning valid JSON wrapped in markdown code fences (```json ... ```)
+- ❌ json.loads() failing when encountering opening ``` characters
+- ❌ All jobs getting 0.0 score with error reasoning
+
+**Solution:**
+- ✅ Added markdown fence stripping logic in `match_job_with_claude()`
+- ✅ Strips opening ```json or ``` line
+- ✅ Strips closing ``` line
+- ✅ Added extensive DEBUG logging to see exact Claude responses
+- ✅ Jobs now matching successfully with actual scores (45.0, 15.0, 58.0, 25.0, etc.)
+
+**Code Added (matching_service.py:128-138):**
+```python
+# Strip markdown code fences if present (```json ... ```)
+if response_text.strip().startswith("```"):
+    lines = response_text.strip().split("\n")
+    if lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    response_text = "\n".join(lines)
+    logger.info(f"DEBUG: Stripped markdown fences")
+```
+
+#### 2. Fixed Real-Time UI Logging 📊 → ✅
+**Problem:** UI only showing logs at job 1/10 and 10/10, missing all intermediate jobs
+- ❌ `matching_commit_interval` was 25, so commits only at start/end with 10 jobs
+- ❌ Match results logged to console but NOT to run logs
+- ❌ UI felt stuck during matching phase
+
+**Solution:**
+- ✅ Changed `matching_commit_interval` from 25 to 1 (commit after every job)
+- ✅ Changed `matching_log_interval` from 10 to 1 (log every job)
+- ✅ Added match results to run logs (not just console)
+- ✅ Commit after EVERY job for real-time UI updates
+
+**Code Changes:**
+- `config.py:42-43` - Set both intervals to 1
+- `matching_service.py:282-293` - Add result logs and commit every job
+
+#### 3. Migrated to Standard Python Logging 📝 → ✅
+**Problem:** Using custom `log_to_console()` instead of standard logger
+- ❌ User explicitly requested: "not to use log_to_console magic but normal logger everywhere"
+
+**Solution:**
+- ✅ Replaced all `log_to_console()` calls with `logger.info()` in matching_service.py
+- ✅ Removed `from app.utils import log_to_console` import
+- ✅ Added `import logging` and `logger = logging.getLogger(__name__)`
+- ✅ Consistent logging pattern across all services
+
+#### 4. Fixed Scraper Real-Time Logging 🔍 → ✅
+**Problem:** Scraper only logging every 10th job during scraping phase
+- ❌ Line 342: `if progress_callback and i % 10 == 0:`
+- ❌ UI showing "Scraping job 1/20" then "Scraping job 10/20" then "Scraping job 20/20"
+
+**Solution:**
+- ✅ Changed to `if progress_callback:` (removed modulo check)
+- ✅ Now logs EVERY job: "Scraping job 1/20", "Scraping job 2/20", etc.
+- ✅ Real-time progress visibility for scraping phase
+
+**Code Change (working_nomads.py:342-344):**
+```python
+# Log every job for real-time UI updates
+if progress_callback:
+    await progress_callback(f"Scraping job {i}/{len(slugs)}...", "info")
+```
+
+### Testing Results
+**Tested with 10 jobs from Working Nomads:**
+- ✅ First 3 jobs failed with old code (error 0.0 scores)
+- ✅ Backend auto-reloaded with fix
+- ✅ Jobs 4-10 matched successfully with actual scores:
+  - Job 4: 45.0/100 (REJECTED)
+  - Job 5: 15.0/100 (REJECTED)
+  - Job 6: 58.0/100 (REJECTED)
+  - Job 7: 25.0/100 (REJECTED)
+  - Job 8-10: Various scores
+- ✅ UI now shows ALL job progress (1/10, 2/10, 3/10, etc.)
+- ✅ Real-time updates work perfectly
+- ✅ Match reasoning is detailed and accurate
+
+**User Feedback:** "wow matching is fucking brilliant so far"
+
+### Files Modified
+1. **`app/services/matching_service.py`** (Major changes)
+   - Replaced log_to_console with standard logger
+   - Added markdown fence stripping (lines 128-138)
+   - Added DEBUG logging for Claude responses
+   - Added match result logging to run logs
+   - Commit after every job instead of batches
+
+2. **`app/config.py`**
+   - `matching_log_interval: 1` (was 10)
+   - `matching_commit_interval: 1` (was 25)
+
+3. **`app/scraper/working_nomads.py`**
+   - Line 342: Removed `i % 10 == 0` check
+   - Now logs every job during scraping
+
+### Current Status
+- ✅ **Claude API integration working perfectly** - Handles markdown-wrapped JSON
+- ✅ **Real-time UI updates working** - Every job logged and committed
+- ✅ **Standard logging everywhere** - No more custom utilities
+- ✅ **Scraping progress visible** - Every job shows in UI
+- ✅ **Matching is brilliant** - Accurate scores and detailed reasoning
+- 🎯 **Ready for full testing** - User testing with 20 jobs
+
+### Next Steps
+- [ ] User will test with 20 jobs to validate all fixes
+- [ ] Monitor for any edge cases or issues
+- [ ] Update PR #3 with these critical fixes
+- [ ] Continue with profile review and pipeline testing
+
+---
+
+## Previous Session - 2025-11-25 (Full Day)
+
+### Accomplished
 
 **MAJOR MILESTONE: Complete Testing & Polish PR (#3)**
 

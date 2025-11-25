@@ -1,6 +1,7 @@
 """AI-powered job matching service using Claude."""
 
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -13,6 +14,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from app.config import settings
 from app.models import Job, JobStatus, Run, UserProfile
 
+logger = logging.getLogger(__name__)
+
 
 def add_log(run: Run, message: str, level: str = "info") -> None:
     """Add a log entry to the run."""
@@ -20,7 +23,7 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
         run.logs = []
 
     run.logs.append({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
         "level": level,
         "message": message
     })
@@ -114,7 +117,25 @@ Respond in this exact JSON format:
         )
 
         # Extract response
+        logger.info(f"DEBUG: Claude message type: {type(message)}")
+        logger.info(f"DEBUG: Claude message content length: {len(message.content)}")
+        logger.info(f"DEBUG: Claude message content[0] type: {type(message.content[0])}")
+
         response_text = message.content[0].text
+        logger.info(f"DEBUG: Raw Claude response (first 500 chars): {response_text[:500]}")
+        logger.info(f"DEBUG: Response text length: {len(response_text)}")
+
+        # Strip markdown code fences if present (```json ... ```)
+        if response_text.strip().startswith("```"):
+            # Remove opening ```json or ```
+            lines = response_text.strip().split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            # Remove closing ```
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            response_text = "\n".join(lines)
+            logger.info(f"DEBUG: Stripped markdown fences, new length: {len(response_text)}")
 
         # Parse JSON response
         match_data = json.loads(response_text)
@@ -149,7 +170,7 @@ Respond in this exact JSON format:
         return (score, reasoning)
 
     except Exception as e:
-        print(f"Error matching job {job.id}: {str(e)}")
+        logger.info(f"Error matching job {job.id}: {str(e)}")
         # Return low score and error reasoning
         return (0.0, f"Error during matching: {str(e)}")
 
@@ -205,27 +226,42 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
             await db.commit()
             return stats
 
+        logger.info(f"\n🔍 Found {stats['total_jobs']} new jobs to match")
         add_log(run, f"Found {stats['total_jobs']} new jobs to match", "info")
         await db.commit()
 
         # Validate API key before initializing client
         if not settings.anthropic_api_key:
+            logger.info("❌ ANTHROPIC_API_KEY not configured!")
             add_log(run, "ANTHROPIC_API_KEY not configured", "error")
             await db.commit()
             raise ValueError("Missing Anthropic API key - set ANTHROPIC_API_KEY in .env")
 
+        # Debug: Show API key details
+        api_key = settings.anthropic_api_key
+        logger.info(f"🔑 API Key Debug:")
+        logger.info(f"   Length: {len(api_key)}")
+        logger.info(f"   First 20 chars: {api_key[:20]}")
+        logger.info(f"   Last 4 chars: ...{api_key[-4:]}")
+        logger.info(f"   Has whitespace: {api_key != api_key.strip()}")
+        logger.info(f"   Stripped length: {len(api_key.strip())}")
+
         # Initialize async Claude client
+        logger.info(f"🤖 Initializing Claude AI client (model: {settings.anthropic_model})...")
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         add_log(run, "Initialized Claude AI client (async)", "info")
         await db.commit()
+        logger.info("✅ Claude AI client initialized")
 
         # Match each job
+        logger.info(f"\n🎯 Starting job matching (threshold: {min_score})...")
         total_score = 0.0
 
         for i, job in enumerate(jobs, 1):
             try:
                 # Log progress at configured interval
                 if i % settings.matching_log_interval == 0 or i == 1:
+                    logger.info(f"\n[{i}/{stats['total_jobs']}] Matching: {job.title} @ {job.company}")
                     add_log(run, f"Matching job {i}/{stats['total_jobs']}: {job.title}", "info")
                     await db.commit()
 
@@ -235,7 +271,7 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
                 # Update job with match results
                 job.match_score = score
                 job.match_reasoning = reasoning
-                job.matched_at = datetime.now(timezone.utc)
+                job.matched_at = datetime.utcnow()
 
                 total_score += score
 
@@ -243,23 +279,34 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
                 if score >= min_score:
                     job.status = JobStatus.MATCHED.value
                     stats["matched"] += 1
-                    print(f"  ✅ MATCHED ({score:.1f}/100): {job.title} at {job.company}")
+                    result_msg = f"✅ MATCHED ({score:.1f}/100): {job.title} at {job.company}"
+                    logger.info(f"  {result_msg}")
+                    add_log(run, result_msg, "success")
                 else:
                     job.status = JobStatus.REJECTED.value
                     stats["rejected"] += 1
-                    print(f"  ❌ REJECTED ({score:.1f}/100): {job.title} at {job.company}")
+                    result_msg = f"❌ REJECTED ({score:.1f}/100): {job.title} at {job.company}"
+                    logger.info(f"  {result_msg}")
+                    add_log(run, result_msg, "info")
 
-                # Commit at configured interval to save progress
-                if i % settings.matching_commit_interval == 0:
-                    await db.commit()
+                # Commit after EVERY job for real-time UI updates
+                await db.commit()
 
             except Exception as e:
                 stats["errors"] += 1
                 job.match_score = 0.0
-                job.match_reasoning = f"Error during matching: {str(e)}"
+                error_msg = str(e)
+                job.match_reasoning = f"Error during matching: {error_msg}"
                 job.status = JobStatus.REJECTED.value
-                print(f"  ❌ Error matching job {job.id}: {str(e)}")
-                add_log(run, f"Error matching job {job.id}: {str(e)}", "error")
+                logger.info(f"  ❌ ERROR matching job {job.id} ({job.title})")
+                logger.info(f"     Error: {error_msg}")
+
+                # Log detailed error for debugging
+                import traceback
+                if settings.debug:
+                    logger.info(f"     Traceback:\n{traceback.format_exc()}")
+
+                add_log(run, f"Error matching job {job.id}: {error_msg}", "error")
                 await db.commit()
 
         # Calculate average score
@@ -270,6 +317,13 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
         await db.commit()
 
         # Log summary
+        logger.info(f"\n✅ Matching completed!")
+        logger.info(f"   Total: {stats['total_jobs']} jobs")
+        logger.info(f"   ✅ Matched: {stats['matched']} jobs")
+        logger.info(f"   ❌ Rejected: {stats['rejected']} jobs")
+        logger.info(f"   ⚠️  Errors: {stats['errors']} jobs")
+        logger.info(f"   📊 Average score: {stats['average_score']}/100")
+
         add_log(
             run,
             f"Matching completed: {stats['matched']} matched, {stats['rejected']} rejected, {stats['errors']} errors",
@@ -278,17 +332,17 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
         add_log(run, f"Average match score: {stats['average_score']}/100", "info")
         await db.commit()
 
-        print(f"\n📊 Matching Summary:")
-        print(f"  Total jobs analyzed: {stats['total_jobs']}")
-        print(f"  ✅ Matched (≥{min_score}): {stats['matched']}")
-        print(f"  ❌ Rejected (<{min_score}): {stats['rejected']}")
-        print(f"  ⚠️  Errors: {stats['errors']}")
-        print(f"  📈 Average score: {stats['average_score']}/100")
+        logger.info(f"\n📊 Matching Summary:")
+        logger.info(f"  Total jobs analyzed: {stats['total_jobs']}")
+        logger.info(f"  ✅ Matched (≥{min_score}): {stats['matched']}")
+        logger.info(f"  ❌ Rejected (<{min_score}): {stats['rejected']}")
+        logger.info(f"  ⚠️  Errors: {stats['errors']}")
+        logger.info(f"  📈 Average score: {stats['average_score']}/100")
 
     except Exception as e:
         add_log(run, f"Matching phase failed: {str(e)}", "error")
         await db.commit()
-        print(f"❌ Matching failed: {str(e)}")
+        logger.info(f"❌ Matching failed: {str(e)}")
         raise
 
     return stats

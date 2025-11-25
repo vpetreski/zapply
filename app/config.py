@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-5-20250929"
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Strip whitespace from API key
+        if self.anthropic_api_key:
+            self.anthropic_api_key = self.anthropic_api_key.strip()
+
     # Job Sources - Working Nomads
     working_nomads_username: str = ""
     working_nomads_password: str = ""
@@ -33,8 +39,8 @@ class Settings(BaseSettings):
 
     # Matching Settings
     matching_min_score_threshold: float = 60.0
-    matching_log_interval: int = 10  # Log every N jobs
-    matching_commit_interval: int = 25  # Commit every N jobs (balance between safety and performance)
+    matching_log_interval: int = 1  # Log every job for real-time UI updates
+    matching_commit_interval: int = 1  # Commit every job for real-time UI updates
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

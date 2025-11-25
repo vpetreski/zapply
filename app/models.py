@@ -12,7 +12,7 @@ from app.database import Base
 
 def utc_now():
     """Get current UTC time - helper for SQLAlchemy default."""
-    return datetime.now(timezone.utc)
+    return datetime.utcnow()  # Returns timezone-naive UTC time for PostgreSQL compatibility
 
 
 class JobStatus(str, Enum):
@@ -208,3 +208,19 @@ class Run(Base):
 
     def __repr__(self) -> str:
         return f"<Run {self.id}: {self.phase} ({self.status})>"
+
+
+class AppSettings(Base):
+    """Application settings stored in database."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self) -> str:
+        return f"<AppSettings {self.key}={self.value}>"
