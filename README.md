@@ -84,8 +84,10 @@ just
 # Database operations
 just db-start              # Start PostgreSQL
 just db-stop               # Stop PostgreSQL
-just db-upgrade            # Run migrations
+just db-status             # Check migration status
+just db-upgrade            # Run pending migrations
 just db-migrate "msg"      # Create new migration
+just db-downgrade          # Rollback one migration
 
 # Development
 just dev-backend           # Run backend server
@@ -127,7 +129,7 @@ cp .env.example .env
 # Start database
 docker-compose up -d postgres
 
-# Run migrations
+# IMPORTANT: Run migrations (required before first run)
 uv run alembic upgrade head
 
 # Run backend
@@ -153,6 +155,80 @@ WORKING_NOMADS_PASSWORD=your_password
 DATABASE_URL=postgresql+asyncpg://zapply:zapply@localhost:5432/zapply
 SCHEDULER_INTERVAL_MINUTES=60
 DEBUG=false
+```
+
+## Database Migrations
+
+Zapply uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations. **Migrations must be run manually** - they do NOT run automatically on startup.
+
+### Migration Workflow
+
+**When you need to run migrations:**
+- After pulling new code that includes migration files
+- After creating a new migration yourself
+- Before starting the application if migrations are pending
+
+**Check migration status:**
+```bash
+just db-status
+# Shows current migration version and any pending migrations
+```
+
+**Run pending migrations:**
+```bash
+just db-upgrade
+# Applies all pending migrations to bring database up to date
+```
+
+**Create a new migration (after changing models):**
+```bash
+just db-migrate "description of changes"
+# Auto-generates migration based on model changes
+# Review the generated file in alembic/versions/ before applying!
+```
+
+**Rollback last migration (if needed):**
+```bash
+just db-downgrade
+# Rolls back one migration - use with caution!
+```
+
+### Why Manual Migrations?
+
+Manual migrations give you:
+- **Control**: Review migrations before applying
+- **Safety**: No surprises in production
+- **Debugging**: Easier to diagnose issues
+- **Testing**: Can test migrations in staging first
+
+### Migration Best Practices
+
+1. **Always review auto-generated migrations** - Alembic isn't perfect
+2. **Run migrations before starting the app** - Avoid runtime schema errors
+3. **Test migrations in development first** - Don't experiment in production
+4. **Commit migration files with code changes** - Keep schema and code in sync
+5. **Never edit applied migrations** - Create new ones instead
+
+### Troubleshooting
+
+**Error: "Target database is not up to date"**
+```bash
+just db-status    # Check what's pending
+just db-upgrade   # Apply pending migrations
+```
+
+**Error: "Can't locate revision"**
+```bash
+# You might be on wrong branch - switch to main and pull
+git checkout main
+git pull
+just db-upgrade
+```
+
+**Want to reset everything? (DANGER: deletes all data)**
+```bash
+just db-reset
+# This destroys the database and recreates it from scratch
 ```
 
 ## Project Structure

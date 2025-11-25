@@ -40,13 +40,30 @@ db-stop:
 db-migrate name:
     uv run alembic revision --autogenerate -m "{{name}}"
 
+# Database: Check migration status
+db-status:
+    @echo "📊 Database Migration Status"
+    @echo "============================"
+    @echo ""
+    @echo "Current version:"
+    @uv run alembic current
+    @echo ""
+    @echo "Migration history:"
+    @uv run alembic history | head -10
+    @echo ""
+    @echo "To apply pending migrations: just db-upgrade"
+
 # Database: Apply migrations
 db-upgrade:
+    @echo "⬆️  Applying database migrations..."
     uv run alembic upgrade head
+    @echo "✅ Database is up to date!"
 
 # Database: Rollback one migration
 db-downgrade:
+    @echo "⚠️  Rolling back one migration..."
     uv run alembic downgrade -1
+    @echo "✅ Migration rolled back"
 
 # Database: Reset database (WARNING: destroys all data)
 db-reset:
