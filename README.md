@@ -35,13 +35,13 @@ Zapply automates the tedious process of finding and applying to remote software 
 
 ## Tech Stack
 
-- **Backend**: Python 3.12, FastAPI
-- **Frontend**: Vue.js (latest)
+- **Backend**: Python 3.12, FastAPI, JWT Authentication
+- **Frontend**: Vue.js 3 with dark theme
 - **Database**: PostgreSQL
 - **Automation**: Playwright
-- **AI**: Anthropic Claude API
+- **AI**: Anthropic Claude API (Sonnet 4.5)
 - **Package Manager**: uv
-- **Deployment**: Docker on Synology NAS
+- **Deployment**: Docker on Synology NAS with GitHub Actions CI/CD
 
 ## Development Setup
 
@@ -60,8 +60,8 @@ Zapply automates the tedious process of finding and applying to remote software 
 # 1. Install all dependencies
 just setup
 
-# 2. Edit .env file with your API keys
-# ANTHROPIC_API_KEY, WORKING_NOMADS credentials, etc.
+# 2. Edit .env file with your credentials
+# ANTHROPIC_API_KEY, WORKING_NOMADS credentials, ADMIN_PASSWORD, JWT_SECRET_KEY
 
 # 3. Start database and run migrations
 just dev-setup
@@ -73,7 +73,19 @@ just dev-backend
 just dev-frontend
 ```
 
-Access the dashboard at `http://localhost:3000`
+Access the application at `http://localhost:3000` and login with your admin credentials.
+
+### Authentication
+
+Zapply uses JWT-based authentication to secure access:
+
+- **Login**: Email + password authentication
+- **Token Expiry**: 30 days
+- **Admin User**: Single admin user (email: configured in `.env`)
+- **Password**: Set via `ADMIN_PASSWORD` in `.env`
+- **JWT Secret**: Auto-generated or set via `JWT_SECRET_KEY` in `.env`
+
+All routes except `/api/auth/login` require authentication.
 
 ### Common Commands
 
@@ -94,10 +106,8 @@ just dev-backend           # Run backend server
 just dev-frontend          # Run frontend dev server
 just dev-setup             # Setup database for development
 
-# Docker (production-like)
-just docker-up             # Start all services
-just docker-down           # Stop all services
-just docker-logs           # View logs
+# Deployment
+just deploy                # Deploy to Synology NAS
 
 # Code quality
 just format                # Format Python code
@@ -110,51 +120,145 @@ just status                # Show current status
 just clean                 # Remove generated files
 ```
 
-### Manual Setup (without just)
-
-<details>
-<summary>Click to expand manual setup instructions</summary>
-
-```bash
-# Install Python dependencies
-uv sync
-
-# Install frontend dependencies
-cd frontend && npm install && cd ..
-
-# Copy environment template
-cp .env.example .env
-# Edit .env with your API keys
-
-# Start database
-docker-compose up -d postgres
-
-# IMPORTANT: Run migrations (required before first run)
-uv run alembic upgrade head
-
-# Run backend
-uv run uvicorn app.main:app --reload
-
-# Run frontend (in another terminal)
-cd frontend && npm run dev
-```
-
-</details>
-
 ### Environment Configuration
 
-The `.env` file is created from `.env.example` during setup. Edit it with your credentials:
+The `.env` file is created from `.env.example` during setup. Required variables:
 
 ```bash
 # Required
-ANTHROPIC_API_KEY=your_api_key_here
-WORKING_NOMADS_USERNAME=your_username
+ANTHROPIC_API_KEY=sk-ant-...
+WORKING_NOMADS_USERNAME=your_email
 WORKING_NOMADS_PASSWORD=your_password
+
+# Authentication (auto-generated during setup)
+ADMIN_EMAIL=your_email
+ADMIN_PASSWORD=your_secure_password
+JWT_SECRET_KEY=auto_generated_key
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=43200
 
 # Optional (has defaults)
 DATABASE_URL=postgresql+asyncpg://zapply:zapply@localhost:5432/zapply
-SCHEDULER_INTERVAL_MINUTES=60
 DEBUG=false
+```
+
+## Production Deployment (Synology NAS)
+
+Zapply uses **GitHub Actions with a self-hosted runner** on your NAS for automated deployments. This means GitHub Actions workflows run directly on your NAS with full local network access.
+
+### Initial Setup
+
+#### 1. Setup NAS Infrastructure
+```bash
+./scripts/setup-nas.sh
+```
+This creates directories and copies configuration to your NAS.
+
+#### 2. Install GitHub Actions Runner on NAS
+SSH to your NAS and run the setup script:
+```bash
+ssh vpetreski@192.168.0.188
+cd /volume1/docker/zapply
+./scripts/setup-github-runner.sh
+```
+
+The script will:
+- Download and configure the GitHub Actions runner
+- Register it with your repository
+- Create start/stop scripts
+- Start the runner
+
+**Get the registration token before running:**
+```bash
+gh api -X POST repos/vpetreski/zapply/actions/runners/registration-token --jq .token
+```
+
+Or visit: https://github.com/vpetreski/zapply/settings/actions/runners/new
+
+#### 3. Verify Runner is Connected
+Check that the runner appears in GitHub:
+https://github.com/vpetreski/zapply/settings/actions/runners
+
+You should see "zapply-nas-runner" with status "Idle" (green dot).
+
+#### 4. Test Deployment
+Push to main branch or merge a PR. GitHub Actions will:
+1. Build Docker images (on GitHub's cloud runners)
+2. Push images to GitHub Container Registry
+3. Deploy to NAS (on your self-hosted runner)
+
+### Deployment Flow
+
+```
+Push to main → GitHub Actions (cloud) → Build Docker images → Push to GHCR
+                      ↓
+         Self-Hosted Runner (NAS) → Pull images → Deploy locally
+```
+
+**Benefits of self-hosted runner:**
+- No SSH/port forwarding needed
+- Runner initiates outbound connections only
+- Runs on local network with direct access
+- Free (GitHub doesn't charge for self-hosted runners)
+- Secure (encrypted communication with GitHub)
+
+### Accessing Production
+
+#### Local Network Access
+When connected to your home network:
+- **Frontend**: http://192.168.0.188:3000
+- **API/Swagger**: http://192.168.0.188:8000/docs
+
+#### Remote Access (from anywhere)
+For access outside your home network, you need to configure port forwarding on your Synology NAS:
+
+**Option 1: Synology QuickConnect (Recommended)**
+- QuickConnect URL: https://192-168-0-188.vpetreski.direct.quickconnect.to
+- May require configuring reverse proxy in DSM for ports 3000 and 8000
+- Steps:
+  1. DSM → Control Panel → Application Portal → Reverse Proxy
+  2. Create rules for ports 3000 (frontend) and 8000 (backend)
+
+**Option 2: Direct Port Forwarding**
+Configure your router to forward ports to your NAS:
+- Forward external port 3000 → 192.168.0.188:3000 (frontend)
+- Forward external port 8000 → 192.168.0.188:8000 (backend)
+- Access via: `http://your-public-ip:3000`
+
+**Option 3: DDNS + Port Forwarding**
+1. Set up DDNS on Synology (Control Panel → External Access → DDNS)
+2. Configure port forwarding as above
+3. Access via: `http://your-ddns-name:3000`
+
+#### First Login
+1. Visit the frontend URL
+2. You'll be redirected to `/login`
+3. Login credentials:
+   - **Email**: vanja@petreski.co (pre-filled)
+   - **Password**: Your configured `ADMIN_PASSWORD`
+4. Token valid for 30 days, stored in browser
+
+### Production Management
+
+```bash
+# SSH to NAS
+ssh vpetreski@192.168.0.188
+
+# View application logs
+cd /volume1/docker/zapply
+docker compose -f docker-compose.prod.yml logs -f
+
+# Restart services
+docker compose -f docker-compose.prod.yml restart
+
+# Check service status
+docker compose -f docker-compose.prod.yml ps
+
+# Manage GitHub Actions runner
+/volume1/docker/zapply/start-runner.sh   # Start runner
+/volume1/docker/zapply/stop-runner.sh    # Stop runner
+tail -f /volume1/docker/zapply/runner.log  # View runner logs
+ps aux | grep run.sh                      # Check runner status
 ```
 
 ## Database Migrations
@@ -163,43 +267,26 @@ Zapply uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migra
 
 ### Migration Workflow
 
-**When you need to run migrations:**
-- After pulling new code that includes migration files
-- After creating a new migration yourself
-- Before starting the application if migrations are pending
-
 **Check migration status:**
 ```bash
 just db-status
-# Shows current migration version and any pending migrations
 ```
 
 **Run pending migrations:**
 ```bash
 just db-upgrade
-# Applies all pending migrations to bring database up to date
 ```
 
 **Create a new migration (after changing models):**
 ```bash
 just db-migrate "description of changes"
-# Auto-generates migration based on model changes
 # Review the generated file in alembic/versions/ before applying!
 ```
 
 **Rollback last migration (if needed):**
 ```bash
 just db-downgrade
-# Rolls back one migration - use with caution!
 ```
-
-### Why Manual Migrations?
-
-Manual migrations give you:
-- **Control**: Review migrations before applying
-- **Safety**: No surprises in production
-- **Debugging**: Easier to diagnose issues
-- **Testing**: Can test migrations in staging first
 
 ### Migration Best Practices
 
@@ -209,28 +296,6 @@ Manual migrations give you:
 4. **Commit migration files with code changes** - Keep schema and code in sync
 5. **Never edit applied migrations** - Create new ones instead
 
-### Troubleshooting
-
-**Error: "Target database is not up to date"**
-```bash
-just db-status    # Check what's pending
-just db-upgrade   # Apply pending migrations
-```
-
-**Error: "Can't locate revision"**
-```bash
-# You might be on wrong branch - switch to main and pull
-git checkout main
-git pull
-just db-upgrade
-```
-
-**Want to reset everything? (DANGER: deletes all data)**
-```bash
-just db-reset
-# This destroys the database and recreates it from scratch
-```
-
 ## Project Structure
 
 ```
@@ -239,21 +304,32 @@ zapply/
 │   ├── main.py            # Application entry point
 │   ├── config.py          # Configuration management
 │   ├── database.py        # Database connection and models
-│   ├── scraper/           # Job scraping module
-│   ├── matcher/           # AI job matching module
-│   ├── applier/           # Application automation module
-│   └── reporter/          # Reporting and notifications
+│   ├── routers/           # API routes (auth, jobs, runs, etc.)
+│   ├── services/          # Business logic (scraper, matcher, scheduler)
+│   └── utils/             # Utilities and helpers
 ├── frontend/              # Vue.js dashboard
-├── docker/                # Docker configuration
-├── docs/                  # Documentation and AI context
+│   ├── src/
+│   │   ├── views/         # Page components (Dashboard, Jobs, Login, etc.)
+│   │   ├── router/        # Vue Router with auth guards
+│   │   └── main.js        # App entry with axios interceptors
+│   ├── public/            # Static assets (favicon, etc.)
+│   └── index.html         # HTML template
+├── scripts/               # Deployment and utility scripts
+│   ├── deploy.sh          # NAS deployment script
+│   └── setup-nas.sh       # NAS initial setup
+├── .github/workflows/     # GitHub Actions CI/CD
+│   └── deploy.yml         # Automated deployment workflow
+├── docker/                # Docker configuration files
+├── docs/                  # Documentation
 │   ├── ai.md             # AI context tracking
 │   └── initial-prompt.md # Project requirements
-├── tests/                 # Test suite
 ├── CLAUDE.md              # Claude Code instructions
-├── .cursorrules           # Cursor IDE configuration
-├── docker-compose.yml     # Docker Compose setup
+├── docker-compose.yml     # Local development compose
+├── docker-compose.prod.yml # Production compose
+├── Dockerfile.prod        # Production backend image
+├── frontend/Dockerfile.prod # Production frontend image
 ├── pyproject.toml         # Python project configuration
-└── README.md              # This file
+└── justfile               # Command runner recipes
 ```
 
 ## Development Workflow
@@ -264,21 +340,29 @@ This project uses AI-assisted development with persistent context tracking:
 2. **Work together**: Collaborate on implementation
 3. **Save progress**: Say "save" to update `docs/ai.md` and commit
 4. **PR workflow**: All changes go through pull requests
-5. **Code review**: Cursor Bugbot reviews PRs automatically
+5. **Automated deployment**: Merging to main triggers deployment to NAS
 
-## MVP Scope (Week 1)
+## Current Features
 
-- ✅ Working Nomads scraper (single source)
-- ✅ Basic matcher with Claude AI
-- ✅ Basic applier with Playwright + Claude AI
-- ✅ Simple status tracking in Postgres
-- ✅ Basic reporter (console/logs initially)
-- ✅ Minimal Vue.js dashboard
+- ✅ Working Nomads scraper (hourly runs)
+- ✅ AI-powered job matching with Claude Sonnet 4.5
+- ✅ Profile management with CV upload
+- ✅ PostgreSQL storage with status tracking
+- ✅ Vue.js dashboard with dark theme
+- ✅ Real-time run monitoring
+- ✅ JWT authentication
+- ✅ Docker deployment on Synology NAS
+- ✅ GitHub Actions CI/CD
 
 ## Future Enhancements
 
+- Application automation (Applier component)
 - Additional job sources (We Work Remotely, Remotive, LinkedIn)
-- Advanced dashboard features and analytics
 - Email/webhook notifications
+- Advanced analytics and filtering
 - Multi-user support
-- Commercial features
+- Interview tracking
+
+## License
+
+Private project - All rights reserved.

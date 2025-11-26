@@ -1,11 +1,222 @@
 # Zapply - AI Context
 
 ## Current Phase
-**Phase 3: Testing & Polish - PR #3 Ready for Final Review**
+**Phase 4: Production Deployment to Synology NAS**
 
-Major features implemented: Automated scheduler, real-time dashboard, trigger type tracking, migration documentation. All Claude Bot review issues fixed. Ready for comprehensive testing.
+Setting up automated CI/CD deployment pipeline with GitHub Actions. User is testing matching quality while deployment infrastructure is being prepared.
 
-## Last Session - 2025-11-25 (Evening - Critical Bug Fixes)
+## Last Session - 2025-11-25 (Late Evening - Deployment Planning)
+
+### NAS Deployment Plan - DOCUMENTED
+
+**Goal:** Fully automated production deployment to Synology NAS with GitHub Actions CI/CD
+
+#### Infrastructure Setup
+**NAS Details:**
+- IP: 192.168.0.188 (local network)
+- QuickConnect: https://192-168-0-188.vpetreski.direct.quickconnect.to
+- SSH access: `nas` command (passwordless, key-based auth)
+- Docker + docker-compose installed ✅
+
+**Deployment Architecture:**
+```
+GitHub (main branch)
+    ↓ (on merge)
+GitHub Actions CI/CD
+    ↓ (builds)
+GitHub Container Registry
+    ↓ (deploys)
+Synology NAS (192.168.0.188)
+    ↓ (serves)
+User (QuickConnect URL)
+```
+
+#### Directory Structure on NAS
+```
+/volume1/docker/zapply/
+├── docker-compose.prod.yml    # Production compose file
+├── .env.production             # All secrets (auto-created from repo .env)
+├── data/
+│   ├── postgres/              # PostgreSQL persistent data
+│   ├── logs/                  # Application logs
+│   └── uploads/               # CV/profile files
+└── scripts/
+    └── deploy.sh              # Automated deployment script
+```
+
+#### Port Mapping & Access
+- **Frontend**: Port 3000 → QuickConnect:3000
+- **Backend API**: Port 8000 → QuickConnect:8000/docs (Swagger)
+- **PostgreSQL**: Port 5432 (internal Docker network only)
+- **Logs**: SSH + `docker logs` or volume mount
+
+#### Automated CI/CD Pipeline
+**Trigger:** Merge to `main` branch
+
+**GitHub Actions Workflow Steps:**
+1. Checkout code
+2. Build optimized Docker images (multi-stage builds)
+   - Backend: Python + uv + dependencies
+   - Frontend: Node build → Nginx serve
+3. Push images to GitHub Container Registry (ghcr.io)
+4. SSH to NAS
+5. Pull latest images
+6. Run `docker-compose up -d` (zero-downtime restart)
+7. Health check verification
+8. Deployment complete (~2-3 minutes total)
+
+#### What User Needs to Do (One-Time, ~5 mins)
+**Step 1: Create GitHub Personal Access Token**
+- Go to: https://github.com/settings/tokens
+- Click "Generate new token (classic)"
+- Select scope: `write:packages`
+- Copy token value
+- Add to repository secrets as `GHCR_TOKEN`
+
+**Step 2: Add NAS SSH Key to GitHub Secrets**
+- Claude will generate SSH key pair (or use existing)
+- User copies private key
+- Add to repository secrets as `NAS_SSH_KEY`
+- Claude adds public key to NAS authorized_keys
+
+**Note:** Claude will guide with step-by-step instructions and screenshots when ready.
+
+#### What Claude Will Automate
+1. ✅ Create production Dockerfiles (optimized multi-stage builds)
+2. ✅ Create docker-compose.prod.yml with:
+   - Health checks
+   - Restart policies
+   - Volume mounts
+   - Network configuration
+   - Environment variables
+3. ✅ Create GitHub Actions workflow (.github/workflows/deploy.yml)
+4. ✅ Create deployment script for NAS (scripts/deploy.sh)
+5. ✅ SSH to NAS and create directory structure
+6. ✅ Copy .env to NAS as .env.production
+7. ✅ Generate/configure SSH keys for deployment
+8. ✅ Set up log rotation
+9. ✅ Create helper scripts for common operations
+10. ✅ Document all access URLs and commands
+11. ✅ Optional: Configure Traefik/Nginx reverse proxy for SSL
+
+#### Easy Management Commands (Post-Deployment)
+```bash
+# View live logs
+nas "cd /volume1/docker/zapply && docker-compose logs -f backend"
+nas "cd /volume1/docker/zapply && docker-compose logs -f frontend"
+
+# Restart services
+nas "cd /volume1/docker/zapply && docker-compose restart"
+
+# Check service status
+nas "cd /volume1/docker/zapply && docker-compose ps"
+
+# Access database
+nas "cd /volume1/docker/zapply && docker-compose exec postgres psql -U zapply"
+
+# Manual deployment (if needed)
+nas "cd /volume1/docker/zapply && ./scripts/deploy.sh"
+
+# View disk usage
+nas "cd /volume1/docker/zapply && du -sh data/*"
+```
+
+#### Access URLs (Post-Deployment)
+- Frontend: https://192-168-0-188.vpetreski.direct.quickconnect.to:3000
+- API Docs: https://192-168-0-188.vpetreski.direct.quickconnect.to:8000/docs
+- API Base: https://192-168-0-188.vpetreski.direct.quickconnect.to:8000/api
+
+#### Production Considerations
+- **Zero-downtime deployments**: docker-compose handles graceful restart
+- **Data persistence**: PostgreSQL data survives container restarts
+- **Log rotation**: Prevent disk space issues
+- **Health checks**: Auto-restart unhealthy containers
+- **Resource limits**: CPU/memory limits if needed
+- **Backup strategy**: PostgreSQL data volume backups
+- **SSL/HTTPS**: Optional Traefik setup for proper certificates
+
+#### Security Requirements - BEFORE PUBLIC DEPLOYMENT
+
+**CRITICAL:** Since the app will be publicly accessible via QuickConnect, MUST implement authentication BEFORE merging to main.
+
+**Current State:** ❌ No authentication - anyone can access frontend and API
+**Required State:** ✅ Login required for all access
+
+**Authentication Implementation:**
+1. **Backend API Security**
+   - JWT-based authentication
+   - Login endpoint (`/api/auth/login`)
+   - Protected routes (all `/api/*` except login)
+   - Token validation middleware
+   - Secure password hashing (bcrypt)
+   - Session management
+
+2. **Frontend Security**
+   - Login page (redirect if not authenticated)
+   - Token storage (localStorage or httpOnly cookies)
+   - Automatic token refresh
+   - Logout functionality
+   - Protected routes (Vue Router guards)
+   - Redirect to login on 401 responses
+
+3. **User Management (MVP)**
+   - Single admin user (you)
+   - Username/password in .env
+   - No registration endpoint (single user system)
+   - Optional: Add more users later via admin panel
+
+4. **Security Best Practices**
+   - HTTPS-only cookies (if using cookies)
+   - CORS configuration
+   - Rate limiting on login endpoint
+   - Password complexity requirements
+   - Token expiration (24 hours)
+   - Refresh token mechanism
+
+**Implementation Approach:**
+- Use FastAPI's OAuth2 with Password flow
+- Vue Router navigation guards
+- Axios interceptors for token handling
+- Simple login form with Zapply branding
+
+**Environment Variables to Add:**
+```env
+# Auth Configuration
+ADMIN_USERNAME=vanja
+ADMIN_PASSWORD=<secure-password-here>
+JWT_SECRET_KEY=<random-secret-key>
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=1440  # 24 hours
+```
+
+**Testing Checklist:**
+- [ ] Cannot access frontend without login
+- [ ] Cannot access API endpoints without token
+- [ ] Login with correct credentials works
+- [ ] Login with wrong credentials fails
+- [ ] Token expires after 24 hours
+- [ ] Logout clears session
+- [ ] Token refresh works
+- [ ] All existing features work with auth
+
+#### Timeline
+1. **Now**: Document plan in ai.md ✅
+2. **Next**: Create all Docker/deployment files
+3. **Then**: Set up NAS infrastructure (SSH, directories, .env)
+4. **Then**: Create GitHub Actions workflow
+5. **Then**: Guide user through GitHub secrets setup
+6. **CRITICAL**: Implement authentication (backend + frontend)
+7. **Finally**: Test security thoroughly
+8. **Deploy**: Merge to main → automatic deployment!
+
+**Estimated Total Setup Time:**
+- Deployment infrastructure: 1-2 hours
+- Authentication implementation: 1-2 hours
+- **Total: 2-4 hours for full secure production deployment**
+
+---
+
+## Previous Session - 2025-11-25 (Evening - Critical Bug Fixes)
 
 ### Accomplished This Session
 

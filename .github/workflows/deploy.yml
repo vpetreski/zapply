@@ -1,0 +1,109 @@
+name: Deploy to Synology NAS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE_NAME: ${{github.repository_owner}}/zapply-backend
+  FRONTEND_IMAGE_NAME: ${{github.repository_owner}}/zapply-frontend
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{env.REGISTRY}}
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+
+      - name: Extract metadata for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{env.REGISTRY}}/${{env.BACKEND_IMAGE_NAME}}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.prod
+          push: true
+          tags: ${{steps.meta-backend.outputs.tags}}
+          labels: ${{steps.meta-backend.outputs.labels}}
+
+      - name: Extract metadata for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{env.REGISTRY}}/${{env.FRONTEND_IMAGE_NAME}}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: true
+          tags: ${{steps.meta-frontend.outputs.tags}}
+          labels: ${{steps.meta-frontend.outputs.labels}}
+
+  deploy:
+    name: Deploy to NAS
+    needs: build-and-push
+    runs-on: self-hosted  # Use self-hosted runner on NAS
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to NAS
+        env:
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          IMAGE_TAG: latest
+        run: |
+          echo "🚀 Deploying to NAS (running locally on NAS via self-hosted runner)"
+          cd /volume1/docker/zapply
+
+          # Copy latest deployment files
+          cp $GITHUB_WORKSPACE/docker-compose.prod.yml /volume1/docker/zapply/
+          cp $GITHUB_WORKSPACE/scripts/deploy.sh /volume1/docker/zapply/scripts/
+          chmod +x scripts/deploy.sh
+
+          # Run deployment script
+          ./scripts/deploy.sh
+
+      - name: Verify deployment
+        run: |
+          echo "⏳ Waiting for services to start..."
+          sleep 30
+
+          # Check if services are running
+          cd /volume1/docker/zapply
+          docker compose -f docker-compose.prod.yml ps
+
+      - name: Deployment summary
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo "📍 Frontend: http://192.168.0.188:3000"
+          echo "📍 Backend/API: http://192.168.0.188:8000/docs"

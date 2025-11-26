@@ -1,7 +1,7 @@
 """Runs API endpoints."""
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -9,13 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Run, RunPhase, RunStatus
+from app.routers.auth import User, get_current_user
 from app.utils import log_to_console
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
 @router.get("/latest")
-async def get_latest_run(db: AsyncSession = Depends(get_db)) -> dict[str, Any] | None:
+async def get_latest_run(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> dict[str, Any] | None:
     """
     Get the latest run (active if running, otherwise most recent completed).
 
@@ -67,6 +71,7 @@ async def get_latest_run(db: AsyncSession = Depends(get_db)) -> dict[str, Any] |
 
 @router.get("")
 async def list_runs(
+    current_user: Annotated[User, Depends(get_current_user)],
     page: int = 1,
     page_size: int = 20,
     status: str | None = None,
@@ -142,7 +147,11 @@ async def list_runs(
 
 
 @router.get("/{run_id}")
-async def get_run(run_id: int, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def get_run(
+    run_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
     """
     Get details for a specific run.
 

@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     matching_log_interval: int = 1  # Log every job for real-time UI updates
     matching_commit_interval: int = 1  # Commit every job for real-time UI updates
 
+    # Authentication
+    admin_email: str = ""
+    admin_password: str = ""
+    jwt_secret_key: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 43200  # 30 days
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

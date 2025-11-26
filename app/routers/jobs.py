@@ -1,6 +1,6 @@
 """Job management endpoints."""
 
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Job, JobStatus
+from app.routers.auth import User, get_current_user
 from app.schemas import JobListResponse, JobResponse, JobStatusUpdate
 from app.utils import log_to_console
 
@@ -16,6 +17,7 @@ router = APIRouter()
 
 @router.get("/", response_model=JobListResponse)
 async def list_jobs(
+    current_user: Annotated[User, Depends(get_current_user)],
     status: Optional[str] = Query(None, description="Filter by job status"),
     source: Optional[str] = Query(None, description="Filter by job source"),
     company: Optional[str] = Query(None, description="Filter by company name"),
@@ -79,6 +81,7 @@ async def list_jobs(
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(
     job_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ) -> JobResponse:
     """Get a specific job by ID."""
@@ -99,6 +102,7 @@ async def get_job(
 async def update_job_status(
     job_id: int,
     update: JobStatusUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ) -> JobResponse:
     """Update job status and related information."""
@@ -134,6 +138,7 @@ async def update_job_status(
 @router.delete("/{job_id}")
 async def delete_job(
     job_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     """Delete a job (for testing/cleanup purposes)."""

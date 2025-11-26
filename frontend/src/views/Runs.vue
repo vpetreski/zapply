@@ -312,20 +312,15 @@ const truncate = (text, length) => {
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return ''
 
-  // Parse the timestamp - if it doesn't have 'Z' suffix, add it to force UTC parsing
-  const isoString = timestamp.includes('Z') ? timestamp : timestamp + 'Z'
-  const utcDate = new Date(isoString)
+  // Backend returns timezone-naive UTC timestamps - append 'Z' to parse as UTC, display in local time
+  const date = new Date(timestamp + 'Z')
 
-  // Subtract 5 hours for Colombian time (UTC-5)
-  const colombianDate = new Date(utcDate.getTime() - (5 * 60 * 60 * 1000))
-
-  // Format using UTC methods (since we already adjusted the timestamp by -5 hours)
-  const year = colombianDate.getUTCFullYear()
-  const month = String(colombianDate.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(colombianDate.getUTCDate()).padStart(2, '0')
-  const hours = String(colombianDate.getUTCHours()).padStart(2, '0')
-  const minutes = String(colombianDate.getUTCMinutes()).padStart(2, '0')
-  const seconds = String(colombianDate.getUTCSeconds()).padStart(2, '0')
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
@@ -369,19 +364,14 @@ const formatTriggerType = (triggerType) => {
 const formatLogTime = (timestamp) => {
   if (!timestamp) return ''
 
-  // Parse the timestamp - if it doesn't have 'Z' suffix, add it to force UTC parsing
-  const isoString = timestamp.includes('Z') ? timestamp : timestamp + 'Z'
-  const utcDate = new Date(isoString)
-
-  // Subtract 5 hours for Colombian time (UTC-5)
-  const colombianDate = new Date(utcDate.getTime() - (5 * 60 * 60 * 1000))
-
-  // Format as HH:MM:SS
-  const hours = String(colombianDate.getUTCHours()).padStart(2, '0')
-  const minutes = String(colombianDate.getUTCMinutes()).padStart(2, '0')
-  const seconds = String(colombianDate.getUTCSeconds()).padStart(2, '0')
-
-  return `${hours}:${minutes}:${seconds}`
+  // Backend returns timezone-naive UTC timestamps - append 'Z' to parse as UTC, display in local time
+  const date = new Date(timestamp + 'Z')
+  return date.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
 }
 
 const scrollToBottomOfLogs = () => {

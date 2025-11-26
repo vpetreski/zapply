@@ -60,3 +60,7 @@ yarn-error.log
 # Build
 dist/
 build/
+
+# Deployment keys
+.github-deploy-key
+.github-deploy-key.pub
