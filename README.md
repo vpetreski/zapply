@@ -170,9 +170,39 @@ Push to main → GitHub Actions → Build Docker images → Push to GHCR → SSH
 
 ### Accessing Production
 
-- **Frontend**: `http://192.168.0.188:3000` (local network)
-- **API**: `http://192.168.0.188:8000` (local network)
-- **QuickConnect**: `https://192-168-0-188.vpetreski.direct.quickconnect.to`
+#### Local Network Access
+When connected to your home network:
+- **Frontend**: http://192.168.0.188:3000
+- **API/Swagger**: http://192.168.0.188:8000/docs
+
+#### Remote Access (from anywhere)
+For access outside your home network, you need to configure port forwarding on your Synology NAS:
+
+**Option 1: Synology QuickConnect (Recommended)**
+- QuickConnect URL: https://192-168-0-188.vpetreski.direct.quickconnect.to
+- May require configuring reverse proxy in DSM for ports 3000 and 8000
+- Steps:
+  1. DSM → Control Panel → Application Portal → Reverse Proxy
+  2. Create rules for ports 3000 (frontend) and 8000 (backend)
+
+**Option 2: Direct Port Forwarding**
+Configure your router to forward ports to your NAS:
+- Forward external port 3000 → 192.168.0.188:3000 (frontend)
+- Forward external port 8000 → 192.168.0.188:8000 (backend)
+- Access via: `http://your-public-ip:3000`
+
+**Option 3: DDNS + Port Forwarding**
+1. Set up DDNS on Synology (Control Panel → External Access → DDNS)
+2. Configure port forwarding as above
+3. Access via: `http://your-ddns-name:3000`
+
+#### First Login
+1. Visit the frontend URL
+2. You'll be redirected to `/login`
+3. Login credentials:
+   - **Email**: vanja@petreski.co (pre-filled)
+   - **Password**: Your configured `ADMIN_PASSWORD`
+4. Token valid for 30 days, stored in browser
 
 ### Production Management
 
