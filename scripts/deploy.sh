@@ -10,7 +10,12 @@ echo "🚀 Starting Zapply deployment..."
 DEPLOY_DIR="/volume1/docker/zapply"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 GITHUB_REPO_OWNER="${GITHUB_REPOSITORY_OWNER:-vpetreski}"
-DOCKER="/usr/local/bin/docker"
+# Use sudo docker when running as GitHub Actions, otherwise use /usr/local/bin/docker
+if [ -n "$GITHUB_ACTIONS" ]; then
+  DOCKER="sudo docker"
+else
+  DOCKER="/usr/local/bin/docker"
+fi
 
 cd "$DEPLOY_DIR" || exit 1
 
