@@ -2,7 +2,7 @@
 
 import base64
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 import anthropic
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models import UserProfile
+from app.routers.auth import User, get_current_user
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -85,7 +86,10 @@ class UpdateProfileRequest(BaseModel):
 
 
 @router.get("/exists", response_model=ProfileExistsResponse)
-async def check_profile_exists(db: AsyncSession = Depends(get_db)) -> ProfileExistsResponse:
+async def check_profile_exists(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> ProfileExistsResponse:
     """
     Check if a user profile exists.
 
@@ -98,7 +102,10 @@ async def check_profile_exists(db: AsyncSession = Depends(get_db)) -> ProfileExi
 
 
 @router.get("", response_model=Optional[ProfileResponse])
-async def get_profile(db: AsyncSession = Depends(get_db)) -> Optional[ProfileResponse]:
+async def get_profile(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> Optional[ProfileResponse]:
     """
     Get the current user profile.
 
@@ -133,6 +140,7 @@ async def get_profile(db: AsyncSession = Depends(get_db)) -> Optional[ProfileRes
 async def generate_profile(
     request: Request,
     profile_request: GenerateProfileRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db)
 ) -> GenerateProfileResponse:
     """
@@ -239,6 +247,7 @@ Respond in this exact JSON format:
 @router.post("/upload-cv")
 async def upload_cv(
     file: UploadFile = File(...),
+    current_user: Annotated[User, Depends(get_current_user)] = Depends(get_current_user),
 ) -> dict:
     """
     Upload CV file (PDF) and extract text.
@@ -281,6 +290,7 @@ async def upload_cv(
 @router.put("", response_model=ProfileResponse)
 async def update_profile(
     request: UpdateProfileRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db)
 ) -> ProfileResponse:
     """
@@ -360,7 +370,10 @@ async def update_profile(
 
 
 @router.delete("")
-async def delete_profile(db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_profile(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> dict:
     """
     Delete the user profile.
 

@@ -90,7 +90,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Vue.js dev servers
+    allow_origins=[
+        "http://localhost:3000",  # Vue.js dev server
+        "http://localhost:5173",  # Vite dev server
+        "http://192.168.0.188:3000",  # Production NAS frontend
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

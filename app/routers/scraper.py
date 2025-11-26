@@ -1,6 +1,7 @@
 """Scraper endpoints for manual triggering."""
 
 import asyncio
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_maker, get_db
 from app.models import Run, RunStatus, UserProfile
+from app.routers.auth import User, get_current_user
 from app.services.scraper_service import scrape_and_save_jobs
 from app.utils import log_to_console
 
@@ -41,7 +43,11 @@ async def run_scraper_background():
 
 @router.post("/run", response_model=StartRunResponse)
 @limiter.limit("5/minute")
-async def run_scraper(request: Request, db: AsyncSession = Depends(get_db)) -> StartRunResponse:
+async def run_scraper(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> StartRunResponse:
     """
     Manually trigger job scraping from Working Nomads.
 

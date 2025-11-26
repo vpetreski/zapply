@@ -1,18 +1,24 @@
 """Statistics endpoints."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Job, JobStatus
+from app.routers.auth import User, get_current_user
 from app.schemas import StatsResponse
 
 router = APIRouter()
 
 
 @router.get("/", response_model=StatsResponse)
-async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
+async def get_stats(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> StatsResponse:
     """Get application statistics."""
     # Count jobs by status
     total_result = await db.execute(select(func.count(Job.id)))

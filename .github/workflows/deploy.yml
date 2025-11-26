@@ -70,52 +70,40 @@ jobs:
   deploy:
     name: Deploy to NAS
     needs: build-and-push
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # Use self-hosted runner on NAS
     if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{secrets.NAS_SSH_KEY}}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H 192.168.0.188 >> ~/.ssh/known_hosts 2>/dev/null || true
-
       - name: Deploy to NAS
         env:
-          NAS_HOST: 192.168.0.188
-          NAS_USER: admin
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          IMAGE_TAG: latest
         run: |
-          # Copy deployment files to NAS
-          scp -i ~/.ssh/id_rsa docker-compose.prod.yml ${NAS_USER}@${NAS_HOST}:/volume1/docker/zapply/
-          scp -i ~/.ssh/id_rsa scripts/deploy.sh ${NAS_USER}@${NAS_HOST}:/volume1/docker/zapply/scripts/
+          echo "🚀 Deploying to NAS (running locally on NAS via self-hosted runner)"
+          cd /volume1/docker/zapply
 
-          # Execute deployment script on NAS
-          ssh -i ~/.ssh/id_rsa ${NAS_USER}@${NAS_HOST} bash << 'ENDSSH'
-            cd /volume1/docker/zapply
-            export GITHUB_REPOSITORY_OWNER=${{github.repository_owner}}
-            export IMAGE_TAG="latest"
-            chmod +x scripts/deploy.sh
-            ./scripts/deploy.sh
-ENDSSH
+          # Copy latest deployment files
+          cp $GITHUB_WORKSPACE/docker-compose.prod.yml /volume1/docker/zapply/
+          cp $GITHUB_WORKSPACE/scripts/deploy.sh /volume1/docker/zapply/scripts/
+          chmod +x scripts/deploy.sh
+
+          # Run deployment script
+          ./scripts/deploy.sh
 
       - name: Verify deployment
-        env:
-          NAS_HOST: 192.168.0.188
-          NAS_USER: admin
         run: |
-          echo "Waiting for services to start..."
+          echo "⏳ Waiting for services to start..."
           sleep 30
 
           # Check if services are running
-          ssh -i ~/.ssh/id_rsa ${NAS_USER}@${NAS_HOST} \
-            "cd /volume1/docker/zapply && docker-compose -f docker-compose.prod.yml ps"
+          cd /volume1/docker/zapply
+          docker compose -f docker-compose.prod.yml ps
 
       - name: Deployment summary
         run: |
           echo "🎉 Deployment completed successfully!"
           echo "📍 Frontend: http://192.168.0.188:3000"
-          echo "📍 QuickConnect: https://192-168-0-188.vpetreski.direct.quickconnect.to:3000"
+          echo "📍 Backend/API: http://192.168.0.188:8000/docs"

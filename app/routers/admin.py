@@ -1,5 +1,7 @@
 """Admin endpoints for database management."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
@@ -7,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import ApplicationLog, AppSettings, Job, Run, UserProfile
+from app.routers.auth import User, get_current_user
 from app.utils import log_to_console
 
 router = APIRouter()
@@ -32,6 +35,7 @@ class CleanupResponse(BaseModel):
 @router.post("/cleanup", response_model=CleanupResponse)
 async def cleanup_database(
     request: CleanupRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db)
 ) -> CleanupResponse:
     """
@@ -139,7 +143,10 @@ class DatabaseStatsResponse(BaseModel):
 
 
 @router.get("/database-stats", response_model=DatabaseStatsResponse)
-async def get_database_stats(db: AsyncSession = Depends(get_db)) -> DatabaseStatsResponse:
+async def get_database_stats(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> DatabaseStatsResponse:
     """Get current row counts for all tables."""
     stats = {}
 
@@ -174,7 +181,10 @@ class RunFrequencyResponse(BaseModel):
 
 
 @router.get("/settings/run-frequency", response_model=RunFrequencyResponse)
-async def get_run_frequency(db: AsyncSession = Depends(get_db)) -> RunFrequencyResponse:
+async def get_run_frequency(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> RunFrequencyResponse:
     """Get current run frequency setting."""
     result = await db.execute(
         select(AppSettings).where(AppSettings.key == "run_frequency")
@@ -186,7 +196,9 @@ async def get_run_frequency(db: AsyncSession = Depends(get_db)) -> RunFrequencyR
 
 @router.post("/settings/run-frequency", response_model=RunFrequencyResponse)
 async def set_run_frequency(
-    request: RunFrequencyRequest, db: AsyncSession = Depends(get_db)
+    request: RunFrequencyRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
 ) -> RunFrequencyResponse:
     """Set run frequency (manual, daily, or hourly)."""
     log_to_console(f"📡 API: POST /api/admin/settings/run-frequency - Set to '{request.frequency}'")
@@ -244,7 +256,10 @@ class ScrapeJobLimitResponse(BaseModel):
 
 
 @router.get("/settings/scrape-job-limit", response_model=ScrapeJobLimitResponse)
-async def get_scrape_job_limit(db: AsyncSession = Depends(get_db)) -> ScrapeJobLimitResponse:
+async def get_scrape_job_limit(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> ScrapeJobLimitResponse:
     """Get current scrape job limit setting."""
     result = await db.execute(
         select(AppSettings).where(AppSettings.key == "scrape_job_limit")
@@ -256,7 +271,9 @@ async def get_scrape_job_limit(db: AsyncSession = Depends(get_db)) -> ScrapeJobL
 
 @router.post("/settings/scrape-job-limit", response_model=ScrapeJobLimitResponse)
 async def set_scrape_job_limit(
-    request: ScrapeJobLimitRequest, db: AsyncSession = Depends(get_db)
+    request: ScrapeJobLimitRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
 ) -> ScrapeJobLimitResponse:
     """Set scrape job limit (0 = unlimited, otherwise limit to N jobs per run)."""
     log_to_console(f"📡 API: POST /api/admin/settings/scrape-job-limit - Set to {request.limit}")

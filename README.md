@@ -144,29 +144,63 @@ DEBUG=false
 
 ## Production Deployment (Synology NAS)
 
+Zapply uses **GitHub Actions with a self-hosted runner** on your NAS for automated deployments. This means GitHub Actions workflows run directly on your NAS with full local network access.
+
 ### Initial Setup
 
-1. **Configure GitHub Secrets** (Settings → Secrets and variables → Actions):
-   - `NAS_HOST`: Your NAS IP (e.g., `192.168.0.188`)
-   - `NAS_USER`: SSH username (e.g., `vpetreski`)
-   - `NAS_SSH_KEY`: Private SSH key for deployment (ED25519 recommended)
+#### 1. Setup NAS Infrastructure
+```bash
+./scripts/setup-nas.sh
+```
+This creates directories and copies configuration to your NAS.
 
-2. **Setup NAS Infrastructure** (one-time):
-   ```bash
-   ./scripts/setup-nas.sh
-   ```
-   This creates directories and copies configuration to your NAS.
+#### 2. Install GitHub Actions Runner on NAS
+SSH to your NAS and run the setup script:
+```bash
+ssh vpetreski@192.168.0.188
+cd /volume1/docker/zapply
+./scripts/setup-github-runner.sh
+```
 
-3. **Merge to main branch**:
-   - GitHub Actions automatically builds and deploys
-   - Docker images pushed to GitHub Container Registry
-   - NAS pulls latest images and restarts services
+The script will:
+- Download and configure the GitHub Actions runner
+- Register it with your repository
+- Create start/stop scripts
+- Start the runner
+
+**Get the registration token before running:**
+```bash
+gh api -X POST repos/vpetreski/zapply/actions/runners/registration-token --jq .token
+```
+
+Or visit: https://github.com/vpetreski/zapply/settings/actions/runners/new
+
+#### 3. Verify Runner is Connected
+Check that the runner appears in GitHub:
+https://github.com/vpetreski/zapply/settings/actions/runners
+
+You should see "zapply-nas-runner" with status "Idle" (green dot).
+
+#### 4. Test Deployment
+Push to main branch or merge a PR. GitHub Actions will:
+1. Build Docker images (on GitHub's cloud runners)
+2. Push images to GitHub Container Registry
+3. Deploy to NAS (on your self-hosted runner)
 
 ### Deployment Flow
 
 ```
-Push to main → GitHub Actions → Build Docker images → Push to GHCR → SSH to NAS → Deploy
+Push to main → GitHub Actions (cloud) → Build Docker images → Push to GHCR
+                      ↓
+         Self-Hosted Runner (NAS) → Pull images → Deploy locally
 ```
+
+**Benefits of self-hosted runner:**
+- No SSH/port forwarding needed
+- Runner initiates outbound connections only
+- Runs on local network with direct access
+- Free (GitHub doesn't charge for self-hosted runners)
+- Secure (encrypted communication with GitHub)
 
 ### Accessing Production
 
@@ -207,21 +241,24 @@ Configure your router to forward ports to your NAS:
 ### Production Management
 
 ```bash
-# Deploy manually (from main branch)
-just deploy
-
 # SSH to NAS
 ssh vpetreski@192.168.0.188
 
-# On NAS - view logs
+# View application logs
 cd /volume1/docker/zapply
 docker compose -f docker-compose.prod.yml logs -f
 
-# On NAS - restart services
+# Restart services
 docker compose -f docker-compose.prod.yml restart
 
-# On NAS - check status
+# Check service status
 docker compose -f docker-compose.prod.yml ps
+
+# Manage GitHub Actions runner
+/volume1/docker/zapply/start-runner.sh   # Start runner
+/volume1/docker/zapply/stop-runner.sh    # Stop runner
+tail -f /volume1/docker/zapply/runner.log  # View runner logs
+ps aux | grep run.sh                      # Check runner status
 ```
 
 ## Database Migrations
