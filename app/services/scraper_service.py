@@ -137,16 +137,10 @@ async def scrape_and_save_jobs(
 
         for i, job_data in enumerate(jobs_data, 1):
             try:
-                # Check if job already exists
+                # Check if job already exists (use in-memory set for O(1) lookup)
                 source_id = job_data.get("source_id")
-                source = job_data.get("source")
 
-                existing_job = await db.execute(
-                    select(Job).filter(Job.source_id == source_id, Job.source == source)
-                )
-                existing = existing_job.scalar_one_or_none()
-
-                if existing:
+                if source_id in existing_slugs:
                     if i % 10 == 0 or i == 1:
                         log_to_console(f"  [{i}/{len(jobs_data)}] ⏭️  Already exists: {job_data['title']}")
                     stats["existing"] += 1
