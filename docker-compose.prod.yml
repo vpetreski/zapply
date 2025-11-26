@@ -60,14 +60,6 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
 
   frontend:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-vpetreski}/zapply-frontend:${IMAGE_TAG:-latest}
@@ -91,14 +83,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
 
 networks:
   zapply-network:
