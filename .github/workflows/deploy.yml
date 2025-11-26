@@ -89,10 +89,12 @@ jobs:
           # Login to GitHub Container Registry
           echo "$GITHUB_TOKEN" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          # Copy latest deployment files
+          # Sync deployment files from git (preserving .env.production)
+          echo "📋 Syncing deployment files from git..."
           cp $GITHUB_WORKSPACE/docker-compose.prod.yml /volume1/docker/zapply/
-          cp $GITHUB_WORKSPACE/scripts/deploy.sh /volume1/docker/zapply/scripts/
-          chmod +x scripts/deploy.sh
+          cp -r $GITHUB_WORKSPACE/scripts/* /volume1/docker/zapply/scripts/
+          chmod +x scripts/*.sh
+          echo "✅ Deployment files synced"
 
           # Run deployment script
           ./scripts/deploy.sh
