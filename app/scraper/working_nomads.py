@@ -1,6 +1,7 @@
 """Working Nomads job scraper."""
 
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from playwright.async_api import async_playwright, Browser, Page
@@ -282,13 +283,20 @@ class WorkingNomadsScraper(BaseScraper):
             log_to_console(f"❌ Failed to scrape job {slug}: {str(e)}")
             return None
 
-    async def scrape(self, since_days: int = 1, progress_callback=None, job_limit: int = 0, existing_slugs: set[str] | None = None) -> list[dict[str, Any]]:
+    async def scrape(
+        self,
+        since_days: int = 1,
+        progress_callback: Callable[[str, str], Awaitable[None]] | None = None,
+        job_limit: int = 0,
+        existing_slugs: set[str] | None = None
+    ) -> list[dict[str, Any]]:
         """
         Scrape jobs from Working Nomads.
 
         Args:
             since_days: Not used for initial implementation (we scrape all filtered jobs)
-            progress_callback: Optional async callback function for progress updates
+            progress_callback: Optional async callback function for progress updates.
+                               Signature: async def callback(message: str, level: str) -> None
             job_limit: Maximum number of jobs to load from the listing page (0 = unlimited)
             existing_slugs: Set of job slugs that already exist in the database (for deduplication)
 
