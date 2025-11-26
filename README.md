@@ -96,7 +96,7 @@ WORKING_NOMADS_PASSWORD=your_password
 
 # Authentication
 ADMIN_EMAIL=your_email@example.com
-ADMIN_PASSWORD=$2b$12$...  # Bcrypt hashed password
+ADMIN_PASSWORD="$2b$12$..."  # Bcrypt hashed password (double quotes for local .env)
 JWT_SECRET_KEY=your_random_secret_key_here
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=43200  # 30 days
@@ -135,7 +135,7 @@ WORKING_NOMADS_PASSWORD=your_password
 
 # Authentication
 ADMIN_EMAIL=your_email@example.com
-ADMIN_PASSWORD=$2b$12$...  # Same bcrypt hash as local
+ADMIN_PASSWORD='$2b$12$...'  # ⚠️ MUST use SINGLE quotes (see below)
 JWT_SECRET_KEY=your_random_secret_key_here  # Same as local
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=43200
@@ -146,6 +146,14 @@ IMAGE_TAG=latest
 ```
 
 **Important Notes:**
+
+- **Password Hash Quoting - CRITICAL:**
+  - **Local .env**: Use **double quotes** `"$2b$12$..."` (Python reads .env directly)
+  - **Production .env.production**: Use **SINGLE quotes** `'$2b$12$...'` (bash `source` command)
+  - **Why**: Deploy script uses `source .env.production` which interprets `$` as shell variables
+  - **With double quotes**: `"$2b$12$..."` → bash expands `$2b`, `$12` → BROKEN hash!
+  - **With single quotes**: `'$2b$12$...'` → bash treats literally → CORRECT hash ✅
+
 - **PostgreSQL**: Local uses `DATABASE_URL`, production uses separate `POSTGRES_*` variables
 - **Passwords**: Use the same bcrypt hash and JWT secret in both environments
 - **Security**: Never commit `.env` or `.env.production` to git

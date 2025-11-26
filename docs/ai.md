@@ -1,17 +1,73 @@
 # Zapply - AI Context
 
 ## Current Phase
-**Phase 4: Production Deployment to Synology NAS**
+**Phase 4: Production Deployment - COMPLETE ✅**
 
-Setting up automated CI/CD deployment pipeline with GitHub Actions. User is testing matching quality while deployment infrastructure is being prepared.
+Fully automated CI/CD deployment pipeline working with GitHub Actions. Production system deployed and operational on Synology NAS.
 
-## Last Session - 2025-11-25 (Night - Production Fixes & Migration)
+## Last Session - 2025-11-26 (Early Morning - Production Password Fix)
 
 ### Accomplished This Session
 
-**CRITICAL PRODUCTION FIXES:**
+**CRITICAL: Fixed Production Login & Completed Deployment**
 
-#### 1. Fixed Login Redirect Loop 🔄 → ✅
+#### 1. Fixed Production Password Hash Escaping 🔐 → ✅
+**Problem:** Login failing in production after deployment with "Invalid salt" error
+- ❌ Password hash in .env.production had wrong quoting
+- ❌ Double quotes `"$2b$..."` cause bash variable expansion ($2b, $12 interpreted as variables)
+- ❌ Deploy script uses `source .env.production` which interprets $ signs
+- ❌ Result: Mangled password hash loaded into container environment
+
+**Root Cause:**
+- Bash `source` command with double quotes: `"$2b$12$..."` → expands to `"b2..."`
+- Shell variable `$2b` = empty, `$12` = empty → hash gets corrupted
+
+**Solution:**
+- ✅ Changed .env.production to use SINGLE quotes: `'$2b$12$...'`
+- ✅ Single quotes prevent variable expansion in bash
+- ✅ Password hash preserved correctly: 60 characters as expected
+- ✅ Tested locally to confirm quote behavior
+- ✅ Updated NAS .env.production file
+- ✅ Deployed via GitHub Actions
+- ✅ Login working perfectly!
+
+**Technical Details:**
+```bash
+# Testing showed the difference:
+ADMIN_PASSWORD="$2b$12$..."  → Length: 14 (BROKEN - variables expanded)
+ADMIN_PASSWORD='$2b$12$...'  → Length: 60 (CORRECT - literal string)
+```
+
+**Correct Format for 1Password:**
+```env
+ADMIN_PASSWORD='$2b$12$w2zQdrjCI6xfPWjDFQ6hpeCFGS2t3Yf35RYOqsfQ0.tmrJ1ONqmAG'
+```
+⚠️ MUST use single quotes, not double quotes!
+
+#### 2. Completed Full Deployment Workflow ✅
+**GitHub Actions Deployment:**
+- ✅ Pushed trivial change to trigger deployment
+- ✅ Build job: 4m8s (Backend + Frontend Docker images)
+- ✅ Deploy job: 3m50s (Pull images, restart containers)
+- ✅ Total deployment time: ~8 minutes
+- ✅ Both services deployed successfully
+- ✅ Zero-downtime deployment working
+
+**Verification:**
+- ✅ Backend API responding: `curl http://192.168.0.188:8000`
+- ✅ Frontend serving: `curl http://192.168.0.188:3000`
+- ✅ Login endpoint working: Returns valid JWT token
+- ✅ Full authentication flow operational
+
+**Test Results:**
+```bash
+$ curl -X POST http://192.168.0.188:8000/api/auth/login \
+  -d "username=vanja@petreski.co&password=px8*jLfG3zLNZiMWzj7BXXBi"
+
+{"access_token":"eyJhbGc...","token_type":"bearer"}  ✅ SUCCESS!
+```
+
+#### 3. Fixed Login Redirect Loop 🔄 → ✅ (Previous Session)
 **Problem:** Users could login successfully but were immediately redirected back to login
 - ❌ Frontend calling `/api/stats` without trailing slash
 - ❌ FastAPI redirecting with 307 to `/api/stats/`
@@ -107,11 +163,13 @@ or
    - Comment: "sqlalchemy.url is now set dynamically from config.py in alembic/env.py"
 
 ### Current Status
+- ✅ **Production deployment working** - Full CI/CD pipeline operational
 - ✅ **Login working** - Both local and production
+- ✅ **Password hash fixed** - Correct quoting in .env files
 - ✅ **Migrations automated** - Run on every app startup
 - ✅ **Profile migrated** - Production has complete user profile
 - ✅ **Both environments identical** - Same behavior local and NAS
-- 🎯 **Ready to commit and push**
+- 🎯 **Ready for production use** - System fully deployed at http://192.168.0.188:3000
 
 ### Technical Notes
 **Why Migrations Run on Startup:**
