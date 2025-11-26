@@ -5,7 +5,144 @@
 
 Setting up automated CI/CD deployment pipeline with GitHub Actions. User is testing matching quality while deployment infrastructure is being prepared.
 
-## Last Session - 2025-11-25 (Late Evening - Deployment Planning)
+## Last Session - 2025-11-25 (Night - Production Fixes & Migration)
+
+### Accomplished This Session
+
+**CRITICAL PRODUCTION FIXES:**
+
+#### 1. Fixed Login Redirect Loop 🔄 → ✅
+**Problem:** Users could login successfully but were immediately redirected back to login
+- ❌ Frontend calling `/api/stats` without trailing slash
+- ❌ FastAPI redirecting with 307 to `/api/stats/`
+- ❌ HTTP 307 redirects lose Authorization header
+- ❌ Stats endpoint returning 401, triggering login redirect
+
+**Solution:**
+- ✅ Fixed `frontend/src/views/Dashboard.vue:113` - Added trailing slash to stats API call
+- ✅ Fixed `frontend/src/views/Stats.vue:69` - Added trailing slash to stats API call
+- ✅ Verified both local and production login working
+
+**User Feedback:** "I can login now to both"
+
+#### 2. Automated Database Migrations 🔧 → ✅
+**Problem:** Database migrations weren't running automatically on deployment
+- ❌ Migrations existed but required manual execution
+- ❌ No consistent behavior between local and production
+- ❌ User wanted identical automation for both environments
+
+**Solution:**
+- ✅ Created `app/utils/migrate.py` - Programmatic migration execution
+- ✅ Updated `app/main.py:40` - Run migrations on app startup
+- ✅ Updated `app/utils/__init__.py` - Export run_migrations function
+- ✅ Updated `Dockerfile.prod:74` - Removed duplicate migration from CMD
+- ✅ Updated `alembic.ini:59` - Use dynamic database URL from config
+- ✅ Migrations now run automatically for both local and production
+
+**Implementation:**
+```python
+# app/utils/migrate.py
+def run_migrations() -> None:
+    """Run Alembic migrations automatically on app startup."""
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        capture_output=True, text=True, check=True
+    )
+```
+
+**Startup logs will now show:**
+```
+🔄 Running database migrations...
+✓ Migrations complete: [output]
+```
+or
+```
+✓ Database schema is up to date
+```
+
+#### 3. Migrated Profile Data to Production 📤 → ✅
+**Problem:** User profile with CV needed to be migrated from local to production NAS database
+- Complete profile data including 95KB CV PDF
+- 26 skills, preferences, custom instructions
+- AI-generated summary
+
+**Solution:**
+- ✅ Exported profile from local database using COPY TO STDOUT
+- ✅ Piped data via SSH to NAS at `/tmp/profile.sql` (193KB)
+- ✅ User manually imported via Docker exec (required sudo password)
+- ✅ Verified migration successful
+
+**Data Migrated:**
+- Profile: Vanja Petreski, Colombia, $10,000/month
+- CV: Resume-Vanja-Petreski.pdf (95,810 bytes binary data)
+- Skills: 26 technologies (Java, Kotlin, Spring Boot, Python, etc.)
+- Preferences: JSON with rate, location, requirements
+- AI Summary: Complete professional summary
+
+### Files Modified
+1. **`frontend/src/views/Dashboard.vue`**
+   - Line 113: `/api/stats` → `/api/stats/` (trailing slash fix)
+
+2. **`frontend/src/views/Stats.vue`**
+   - Line 69: `/api/stats` → `/api/stats/` (trailing slash fix)
+
+3. **`app/utils/migrate.py`** (NEW)
+   - Programmatic migration execution
+   - Runs `alembic upgrade head` on startup
+   - Detailed logging and error handling
+
+4. **`app/utils/__init__.py`**
+   - Added import and export of `run_migrations`
+
+5. **`app/main.py`**
+   - Line 18: Import `run_migrations`
+   - Line 40: Call `run_migrations()` during startup
+
+6. **`Dockerfile.prod`**
+   - Line 74: Removed `alembic upgrade head &&` from CMD
+   - Migrations now handled by app startup
+
+7. **`alembic.ini`**
+   - Line 59: Removed hardcoded database URL
+   - Comment: "sqlalchemy.url is now set dynamically from config.py in alembic/env.py"
+
+### Current Status
+- ✅ **Login working** - Both local and production
+- ✅ **Migrations automated** - Run on every app startup
+- ✅ **Profile migrated** - Production has complete user profile
+- ✅ **Both environments identical** - Same behavior local and NAS
+- 🎯 **Ready to commit and push**
+
+### Technical Notes
+**Why Migrations Run on Startup:**
+- Ensures database schema is always up to date
+- Works identically for local dev and production
+- No manual intervention needed
+- Safe: Alembic won't re-run applied migrations
+- Fast: Only new migrations are executed
+
+**Migration Flow:**
+```
+App starts → run_migrations() → alembic upgrade head → ✓ Schema up to date
+```
+
+**Production Deployment Flow:**
+```
+1. GitHub Actions builds new image
+2. NAS pulls and restarts container
+3. App starts, runs migrations automatically
+4. Services come online with latest schema
+```
+
+### Next Steps
+- [ ] Commit all changes
+- [ ] Push to repository
+- [ ] Test migration automation on next deployment
+- [ ] Continue with planned work
+
+---
+
+## Previous Session - 2025-11-25 (Late Evening - Deployment Planning)
 
 ### NAS Deployment Plan - DOCUMENTED
 

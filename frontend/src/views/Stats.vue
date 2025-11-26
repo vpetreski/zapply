@@ -66,7 +66,7 @@ const stats = ref({
 
 const fetchStats = async () => {
   try {
-    const response = await axios.get('/api/stats')
+    const response = await axios.get('/api/stats/')
     stats.value = response.data
   } catch (error) {
     console.error('Failed to fetch stats:', error)

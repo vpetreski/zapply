@@ -15,7 +15,7 @@ from app.config import settings
 from app.database import engine
 from app.routers import admin, auth, health, jobs, profile, runs, scraper, stats
 from app.services.scheduler_service import start_scheduler, stop_scheduler, get_scheduler_status
-from app.utils import log_to_console
+from app.utils import log_to_console, run_migrations
 
 # Configure logging - simple format for console output
 logging.basicConfig(
@@ -35,6 +35,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info(f"Starting {settings.app_name} v{__version__}")
     logger.info(f"Database: {settings.database_url.split('@')[-1]}")  # Hide credentials
+
+    # Run database migrations
+    run_migrations()
 
     # Validate configuration
     if not settings.anthropic_api_key:
