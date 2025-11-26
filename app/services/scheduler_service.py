@@ -5,11 +5,11 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import select
 
 from app.database import get_db_session
-from app.models import RunTriggerType
+from app.models import AppSettings, RunTriggerType
 from app.services.scraper_service import scrape_and_save_jobs
-from app.services.settings_manager import load_settings
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,23 @@ async def hourly_run() -> None:
     await run_scheduled_pipeline(RunTriggerType.SCHEDULED_HOURLY.value)
 
 
+async def load_run_frequency() -> str:
+    """Load run_frequency setting from database."""
+    try:
+        db_generator = get_db_session()
+        db = await db_generator.__anext__()
+        result = await db.execute(
+            select(AppSettings).where(AppSettings.key == "run_frequency")
+        )
+        setting = result.scalar_one_or_none()
+        frequency = setting.value if setting else "manual"
+        await db_generator.aclose()
+        return frequency
+    except Exception as e:
+        logger.error(f"Failed to load run_frequency from database: {e}, defaulting to manual")
+        return "manual"
+
+
 def start_scheduler() -> None:
     """
     Start the scheduler and configure jobs based on settings.
@@ -64,9 +81,13 @@ def start_scheduler() -> None:
 
     scheduler = AsyncIOScheduler()
 
-    # Load settings and configure jobs
-    settings = load_settings()
-    frequency = settings.get("run_frequency", "manual")
+    # Load frequency from database using asyncio
+    import asyncio
+    try:
+        frequency = asyncio.run(load_run_frequency())
+    except Exception as e:
+        logger.error(f"Failed to load settings: {e}, defaulting to manual")
+        frequency = "manual"
 
     configure_scheduler_jobs(frequency)
 
