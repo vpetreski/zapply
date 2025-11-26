@@ -314,10 +314,54 @@ Configure your router to forward ports to your NAS:
    - **Password**: Your configured `ADMIN_PASSWORD`
 4. Token valid for 30 days, stored in browser
 
+### NAS SSH Setup
+
+For easy access to your Synology NAS, set up passwordless SSH with an alias:
+
+**Quick Setup:**
+```bash
+# 1. Generate SSH key (if you don't have one)
+ssh-keygen -t ed25519 -C "vanja@petreski.co"
+
+# 2. Copy key to NAS
+ssh-copy-id vpetreski@192.168.0.188
+
+# 3. Add alias for easy access
+echo "alias nas='ssh vpetreski@192.168.0.188'" >> ~/.zshrc
+source ~/.zshrc
+
+# 4. Connect
+nas
+```
+
+**Migrating to New Mac:**
+```bash
+# Copy these files from old Mac to new Mac:
+~/.ssh/id_ed25519
+~/.ssh/id_ed25519.pub
+
+# On new Mac, set permissions:
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519
+chmod 644 ~/.ssh/id_ed25519.pub
+
+# Add alias
+echo "alias nas='ssh vpetreski@192.168.0.188'" >> ~/.zshrc
+source ~/.zshrc
+```
+
+**NAS Details:**
+- **IP**: 192.168.0.188
+- **Username**: vpetreski
+- **Alias**: `nas`
+
 ### Production Management
 
 ```bash
-# SSH to NAS
+# SSH to NAS (using alias)
+nas
+
+# Or directly
 ssh vpetreski@192.168.0.188
 
 # View application logs
