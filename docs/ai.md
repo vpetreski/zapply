@@ -135,15 +135,84 @@ nas "cd /volume1/docker/zapply && du -sh data/*"
 - **Backup strategy**: PostgreSQL data volume backups
 - **SSL/HTTPS**: Optional Traefik setup for proper certificates
 
+#### Security Requirements - BEFORE PUBLIC DEPLOYMENT
+
+**CRITICAL:** Since the app will be publicly accessible via QuickConnect, MUST implement authentication BEFORE merging to main.
+
+**Current State:** ❌ No authentication - anyone can access frontend and API
+**Required State:** ✅ Login required for all access
+
+**Authentication Implementation:**
+1. **Backend API Security**
+   - JWT-based authentication
+   - Login endpoint (`/api/auth/login`)
+   - Protected routes (all `/api/*` except login)
+   - Token validation middleware
+   - Secure password hashing (bcrypt)
+   - Session management
+
+2. **Frontend Security**
+   - Login page (redirect if not authenticated)
+   - Token storage (localStorage or httpOnly cookies)
+   - Automatic token refresh
+   - Logout functionality
+   - Protected routes (Vue Router guards)
+   - Redirect to login on 401 responses
+
+3. **User Management (MVP)**
+   - Single admin user (you)
+   - Username/password in .env
+   - No registration endpoint (single user system)
+   - Optional: Add more users later via admin panel
+
+4. **Security Best Practices**
+   - HTTPS-only cookies (if using cookies)
+   - CORS configuration
+   - Rate limiting on login endpoint
+   - Password complexity requirements
+   - Token expiration (24 hours)
+   - Refresh token mechanism
+
+**Implementation Approach:**
+- Use FastAPI's OAuth2 with Password flow
+- Vue Router navigation guards
+- Axios interceptors for token handling
+- Simple login form with Zapply branding
+
+**Environment Variables to Add:**
+```env
+# Auth Configuration
+ADMIN_USERNAME=vanja
+ADMIN_PASSWORD=<secure-password-here>
+JWT_SECRET_KEY=<random-secret-key>
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=1440  # 24 hours
+```
+
+**Testing Checklist:**
+- [ ] Cannot access frontend without login
+- [ ] Cannot access API endpoints without token
+- [ ] Login with correct credentials works
+- [ ] Login with wrong credentials fails
+- [ ] Token expires after 24 hours
+- [ ] Logout clears session
+- [ ] Token refresh works
+- [ ] All existing features work with auth
+
 #### Timeline
 1. **Now**: Document plan in ai.md ✅
 2. **Next**: Create all Docker/deployment files
 3. **Then**: Set up NAS infrastructure (SSH, directories, .env)
 4. **Then**: Create GitHub Actions workflow
-5. **Finally**: Guide user through GitHub secrets setup
-6. **Deploy**: Merge to main → automatic deployment!
+5. **Then**: Guide user through GitHub secrets setup
+6. **CRITICAL**: Implement authentication (backend + frontend)
+7. **Finally**: Test security thoroughly
+8. **Deploy**: Merge to main → automatic deployment!
 
-**Estimated Total Setup Time:** 1-2 hours for full automation
+**Estimated Total Setup Time:**
+- Deployment infrastructure: 1-2 hours
+- Authentication implementation: 1-2 hours
+- **Total: 2-4 hours for full secure production deployment**
 
 ---
 
