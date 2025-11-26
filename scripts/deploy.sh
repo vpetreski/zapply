@@ -27,6 +27,8 @@ if [ -f .env.production ]; then
     set -a
     source .env.production
     set +a
+    # Strip quotes from ADMIN_PASSWORD if present (bcrypt hashes fail with quotes)
+    ADMIN_PASSWORD=$(echo "$ADMIN_PASSWORD" | sed "s/^'\\(.*\\)'\$/\\1/")
 else
     echo "❌ Error: .env.production not found"
     exit 1
