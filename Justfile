@@ -171,8 +171,35 @@ push message:
 
 # Production: Deploy to Synology NAS (requires SSH access)
 deploy:
-    @echo "🚀 Deploying to Synology NAS..."
-    @echo "TODO: Add deployment commands"
+    #!/usr/bin/env bash
+    set -e
+    echo "🚀 Deploying to Synology NAS..."
+    echo ""
+
+    # Check we're on main branch
+    BRANCH=$(git branch --show-current)
+    if [ "$BRANCH" != "main" ]; then
+        echo "❌ Error: Must be on main branch to deploy"
+        echo "   Current branch: $BRANCH"
+        exit 1
+    fi
+
+    # Check for uncommitted changes
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "❌ Error: Uncommitted changes detected"
+        echo "   Commit or stash changes before deploying"
+        exit 1
+    fi
+
+    echo "✓ On main branch with clean working directory"
+    echo ""
+    echo "Deployment will be triggered by GitHub Actions"
+    echo "Push to main to deploy, or manually run deployment script on NAS"
+    echo ""
+    echo "Manual deployment:"
+    echo "  ssh vpetreski@192.168.0.188"
+    echo "  cd /volume1/docker/zapply"
+    echo "  ./deploy.sh"
 
 # Health check: Verify all services are running
 health:

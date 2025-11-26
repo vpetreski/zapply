@@ -13,7 +13,7 @@ from slowapi.util import get_remote_address
 from app import __version__
 from app.config import settings
 from app.database import engine
-from app.routers import admin, health, jobs, profile, runs, scraper, stats
+from app.routers import admin, auth, health, jobs, profile, runs, scraper, stats
 from app.services.scheduler_service import start_scheduler, stop_scheduler, get_scheduler_status
 from app.utils import log_to_console
 
@@ -97,6 +97,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth.router, tags=["Authentication"])
 app.include_router(health.router, tags=["Health"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(runs.router, tags=["Runs"])

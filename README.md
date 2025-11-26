@@ -35,13 +35,13 @@ Zapply automates the tedious process of finding and applying to remote software 
 
 ## Tech Stack
 
-- **Backend**: Python 3.12, FastAPI
-- **Frontend**: Vue.js (latest)
+- **Backend**: Python 3.12, FastAPI, JWT Authentication
+- **Frontend**: Vue.js 3 with dark theme
 - **Database**: PostgreSQL
 - **Automation**: Playwright
-- **AI**: Anthropic Claude API
+- **AI**: Anthropic Claude API (Sonnet 4.5)
 - **Package Manager**: uv
-- **Deployment**: Docker on Synology NAS
+- **Deployment**: Docker on Synology NAS with GitHub Actions CI/CD
 
 ## Development Setup
 
@@ -60,8 +60,8 @@ Zapply automates the tedious process of finding and applying to remote software 
 # 1. Install all dependencies
 just setup
 
-# 2. Edit .env file with your API keys
-# ANTHROPIC_API_KEY, WORKING_NOMADS credentials, etc.
+# 2. Edit .env file with your credentials
+# ANTHROPIC_API_KEY, WORKING_NOMADS credentials, ADMIN_PASSWORD, JWT_SECRET_KEY
 
 # 3. Start database and run migrations
 just dev-setup
@@ -73,7 +73,19 @@ just dev-backend
 just dev-frontend
 ```
 
-Access the dashboard at `http://localhost:3000`
+Access the application at `http://localhost:3000` and login with your admin credentials.
+
+### Authentication
+
+Zapply uses JWT-based authentication to secure access:
+
+- **Login**: Email + password authentication
+- **Token Expiry**: 30 days
+- **Admin User**: Single admin user (email: configured in `.env`)
+- **Password**: Set via `ADMIN_PASSWORD` in `.env`
+- **JWT Secret**: Auto-generated or set via `JWT_SECRET_KEY` in `.env`
+
+All routes except `/api/auth/login` require authentication.
 
 ### Common Commands
 
@@ -94,10 +106,8 @@ just dev-backend           # Run backend server
 just dev-frontend          # Run frontend dev server
 just dev-setup             # Setup database for development
 
-# Docker (production-like)
-just docker-up             # Start all services
-just docker-down           # Stop all services
-just docker-logs           # View logs
+# Deployment
+just deploy                # Deploy to Synology NAS
 
 # Code quality
 just format                # Format Python code
@@ -110,51 +120,78 @@ just status                # Show current status
 just clean                 # Remove generated files
 ```
 
-### Manual Setup (without just)
-
-<details>
-<summary>Click to expand manual setup instructions</summary>
-
-```bash
-# Install Python dependencies
-uv sync
-
-# Install frontend dependencies
-cd frontend && npm install && cd ..
-
-# Copy environment template
-cp .env.example .env
-# Edit .env with your API keys
-
-# Start database
-docker-compose up -d postgres
-
-# IMPORTANT: Run migrations (required before first run)
-uv run alembic upgrade head
-
-# Run backend
-uv run uvicorn app.main:app --reload
-
-# Run frontend (in another terminal)
-cd frontend && npm run dev
-```
-
-</details>
-
 ### Environment Configuration
 
-The `.env` file is created from `.env.example` during setup. Edit it with your credentials:
+The `.env` file is created from `.env.example` during setup. Required variables:
 
 ```bash
 # Required
-ANTHROPIC_API_KEY=your_api_key_here
-WORKING_NOMADS_USERNAME=your_username
+ANTHROPIC_API_KEY=sk-ant-...
+WORKING_NOMADS_USERNAME=your_email
 WORKING_NOMADS_PASSWORD=your_password
+
+# Authentication (auto-generated during setup)
+ADMIN_EMAIL=your_email
+ADMIN_PASSWORD=your_secure_password
+JWT_SECRET_KEY=auto_generated_key
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=43200
 
 # Optional (has defaults)
 DATABASE_URL=postgresql+asyncpg://zapply:zapply@localhost:5432/zapply
-SCHEDULER_INTERVAL_MINUTES=60
 DEBUG=false
+```
+
+## Production Deployment (Synology NAS)
+
+### Initial Setup
+
+1. **Configure GitHub Secrets** (Settings → Secrets and variables → Actions):
+   - `NAS_HOST`: Your NAS IP (e.g., `192.168.0.188`)
+   - `NAS_USER`: SSH username (e.g., `vpetreski`)
+   - `NAS_SSH_KEY`: Private SSH key for deployment (ED25519 recommended)
+
+2. **Setup NAS Infrastructure** (one-time):
+   ```bash
+   ./scripts/setup-nas.sh
+   ```
+   This creates directories and copies configuration to your NAS.
+
+3. **Merge to main branch**:
+   - GitHub Actions automatically builds and deploys
+   - Docker images pushed to GitHub Container Registry
+   - NAS pulls latest images and restarts services
+
+### Deployment Flow
+
+```
+Push to main → GitHub Actions → Build Docker images → Push to GHCR → SSH to NAS → Deploy
+```
+
+### Accessing Production
+
+- **Frontend**: `http://192.168.0.188:3000` (local network)
+- **API**: `http://192.168.0.188:8000` (local network)
+- **QuickConnect**: `https://192-168-0-188.vpetreski.direct.quickconnect.to`
+
+### Production Management
+
+```bash
+# Deploy manually (from main branch)
+just deploy
+
+# SSH to NAS
+ssh vpetreski@192.168.0.188
+
+# On NAS - view logs
+cd /volume1/docker/zapply
+docker compose -f docker-compose.prod.yml logs -f
+
+# On NAS - restart services
+docker compose -f docker-compose.prod.yml restart
+
+# On NAS - check status
+docker compose -f docker-compose.prod.yml ps
 ```
 
 ## Database Migrations
@@ -163,43 +200,26 @@ Zapply uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migra
 
 ### Migration Workflow
 
-**When you need to run migrations:**
-- After pulling new code that includes migration files
-- After creating a new migration yourself
-- Before starting the application if migrations are pending
-
 **Check migration status:**
 ```bash
 just db-status
-# Shows current migration version and any pending migrations
 ```
 
 **Run pending migrations:**
 ```bash
 just db-upgrade
-# Applies all pending migrations to bring database up to date
 ```
 
 **Create a new migration (after changing models):**
 ```bash
 just db-migrate "description of changes"
-# Auto-generates migration based on model changes
 # Review the generated file in alembic/versions/ before applying!
 ```
 
 **Rollback last migration (if needed):**
 ```bash
 just db-downgrade
-# Rolls back one migration - use with caution!
 ```
-
-### Why Manual Migrations?
-
-Manual migrations give you:
-- **Control**: Review migrations before applying
-- **Safety**: No surprises in production
-- **Debugging**: Easier to diagnose issues
-- **Testing**: Can test migrations in staging first
 
 ### Migration Best Practices
 
@@ -209,28 +229,6 @@ Manual migrations give you:
 4. **Commit migration files with code changes** - Keep schema and code in sync
 5. **Never edit applied migrations** - Create new ones instead
 
-### Troubleshooting
-
-**Error: "Target database is not up to date"**
-```bash
-just db-status    # Check what's pending
-just db-upgrade   # Apply pending migrations
-```
-
-**Error: "Can't locate revision"**
-```bash
-# You might be on wrong branch - switch to main and pull
-git checkout main
-git pull
-just db-upgrade
-```
-
-**Want to reset everything? (DANGER: deletes all data)**
-```bash
-just db-reset
-# This destroys the database and recreates it from scratch
-```
-
 ## Project Structure
 
 ```
@@ -239,21 +237,32 @@ zapply/
 │   ├── main.py            # Application entry point
 │   ├── config.py          # Configuration management
 │   ├── database.py        # Database connection and models
-│   ├── scraper/           # Job scraping module
-│   ├── matcher/           # AI job matching module
-│   ├── applier/           # Application automation module
-│   └── reporter/          # Reporting and notifications
+│   ├── routers/           # API routes (auth, jobs, runs, etc.)
+│   ├── services/          # Business logic (scraper, matcher, scheduler)
+│   └── utils/             # Utilities and helpers
 ├── frontend/              # Vue.js dashboard
-├── docker/                # Docker configuration
-├── docs/                  # Documentation and AI context
+│   ├── src/
+│   │   ├── views/         # Page components (Dashboard, Jobs, Login, etc.)
+│   │   ├── router/        # Vue Router with auth guards
+│   │   └── main.js        # App entry with axios interceptors
+│   ├── public/            # Static assets (favicon, etc.)
+│   └── index.html         # HTML template
+├── scripts/               # Deployment and utility scripts
+│   ├── deploy.sh          # NAS deployment script
+│   └── setup-nas.sh       # NAS initial setup
+├── .github/workflows/     # GitHub Actions CI/CD
+│   └── deploy.yml         # Automated deployment workflow
+├── docker/                # Docker configuration files
+├── docs/                  # Documentation
 │   ├── ai.md             # AI context tracking
 │   └── initial-prompt.md # Project requirements
-├── tests/                 # Test suite
 ├── CLAUDE.md              # Claude Code instructions
-├── .cursorrules           # Cursor IDE configuration
-├── docker-compose.yml     # Docker Compose setup
+├── docker-compose.yml     # Local development compose
+├── docker-compose.prod.yml # Production compose
+├── Dockerfile.prod        # Production backend image
+├── frontend/Dockerfile.prod # Production frontend image
 ├── pyproject.toml         # Python project configuration
-└── README.md              # This file
+└── justfile               # Command runner recipes
 ```
 
 ## Development Workflow
@@ -264,21 +273,29 @@ This project uses AI-assisted development with persistent context tracking:
 2. **Work together**: Collaborate on implementation
 3. **Save progress**: Say "save" to update `docs/ai.md` and commit
 4. **PR workflow**: All changes go through pull requests
-5. **Code review**: Cursor Bugbot reviews PRs automatically
+5. **Automated deployment**: Merging to main triggers deployment to NAS
 
-## MVP Scope (Week 1)
+## Current Features
 
-- ✅ Working Nomads scraper (single source)
-- ✅ Basic matcher with Claude AI
-- ✅ Basic applier with Playwright + Claude AI
-- ✅ Simple status tracking in Postgres
-- ✅ Basic reporter (console/logs initially)
-- ✅ Minimal Vue.js dashboard
+- ✅ Working Nomads scraper (hourly runs)
+- ✅ AI-powered job matching with Claude Sonnet 4.5
+- ✅ Profile management with CV upload
+- ✅ PostgreSQL storage with status tracking
+- ✅ Vue.js dashboard with dark theme
+- ✅ Real-time run monitoring
+- ✅ JWT authentication
+- ✅ Docker deployment on Synology NAS
+- ✅ GitHub Actions CI/CD
 
 ## Future Enhancements
 
+- Application automation (Applier component)
 - Additional job sources (We Work Remotely, Remotive, LinkedIn)
-- Advanced dashboard features and analytics
 - Email/webhook notifications
+- Advanced analytics and filtering
 - Multi-user support
-- Commercial features
+- Interview tracking
+
+## License
+
+Private project - All rights reserved.
