@@ -196,7 +196,7 @@ const fetchJobs = async (append = false) => {
       params.min_score = minScore.value
     }
 
-    const response = await axios.get('/api/jobs/', { params })
+    const response = await axios.get('/api/jobs', { params })
 
     if (append) {
       jobs.value = [...jobs.value, ...response.data.jobs]

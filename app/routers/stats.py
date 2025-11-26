@@ -14,6 +14,7 @@ from app.schemas import StatsResponse
 router = APIRouter()
 
 
+@router.get("", response_model=StatsResponse)
 @router.get("/", response_model=StatsResponse)
 async def get_stats(
     current_user: Annotated[User, Depends(get_current_user)],

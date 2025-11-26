@@ -15,6 +15,7 @@ from app.utils import log_to_console
 router = APIRouter()
 
 
+@router.get("", response_model=JobListResponse)
 @router.get("/", response_model=JobListResponse)
 async def list_jobs(
     current_user: Annotated[User, Depends(get_current_user)],

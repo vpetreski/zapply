@@ -84,6 +84,7 @@ app = FastAPI(
     version=__version__,
     description="AI-powered remote job application automation system",
     lifespan=lifespan,
+    redirect_slashes=False,  # Handle both /api/endpoint and /api/endpoint/ without redirecting
 )
 
 # Add rate limiter to app state
