@@ -75,6 +75,82 @@ just dev-frontend
 
 Access the application at `http://localhost:3000` and login with your admin credentials.
 
+### Environment Variables
+
+Zapply uses different environment configurations for local development and production deployment.
+
+#### Local Development (`.env`)
+
+For local development, copy `.env.example` to `.env` and configure:
+
+```bash
+# Database - Single URL for local development
+DATABASE_URL=postgresql+asyncpg://zapply:zapply@localhost:5432/zapply
+
+# Anthropic API
+ANTHROPIC_API_KEY=sk-ant-api03-YOUR_KEY_HERE
+
+# Job Sources
+WORKING_NOMADS_USERNAME=your_email@example.com
+WORKING_NOMADS_PASSWORD=your_password
+
+# Authentication
+ADMIN_EMAIL=your_email@example.com
+ADMIN_PASSWORD=$2b$12$...  # Bcrypt hashed password
+JWT_SECRET_KEY=your_random_secret_key_here
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=43200  # 30 days
+```
+
+**Generating Required Values:**
+
+```bash
+# Generate JWT secret key
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Generate bcrypt password hash
+python -c "import bcrypt; print(bcrypt.hashpw('your_password'.encode('utf-8'), bcrypt.gensalt()).decode())"
+```
+
+#### Production (NAS) - `.env.production`
+
+For production deployment on Synology NAS, create `/volume1/docker/zapply/.env.production`:
+
+```bash
+# PostgreSQL - Separate variables for Docker deployment
+POSTGRES_USER=zapply
+POSTGRES_PASSWORD=secure_production_password
+POSTGRES_DB=zapply
+
+# Application
+APP_NAME=Zapply
+DEBUG=false
+
+# Anthropic API
+ANTHROPIC_API_KEY=sk-ant-api03-YOUR_KEY_HERE
+
+# Job Sources
+WORKING_NOMADS_USERNAME=your_email@example.com
+WORKING_NOMADS_PASSWORD=your_password
+
+# Authentication
+ADMIN_EMAIL=your_email@example.com
+ADMIN_PASSWORD=$2b$12$...  # Same bcrypt hash as local
+JWT_SECRET_KEY=your_random_secret_key_here  # Same as local
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=43200
+
+# GitHub (for CI/CD)
+GITHUB_REPOSITORY_OWNER=your_github_username
+IMAGE_TAG=latest
+```
+
+**Important Notes:**
+- **PostgreSQL**: Local uses `DATABASE_URL`, production uses separate `POSTGRES_*` variables
+- **Passwords**: Use the same bcrypt hash and JWT secret in both environments
+- **Security**: Never commit `.env` or `.env.production` to git
+- **Template**: Use `.env.production.example` as a template for production setup
+
 ### Authentication
 
 Zapply uses JWT-based authentication to secure access:
