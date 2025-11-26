@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import AppSettings, Job, Run, RunPhase, RunStatus, RunTriggerType, UserProfile
 from app.schemas import JobCreate
 from app.scraper import WorkingNomadsScraper
@@ -91,6 +92,20 @@ async def scrape_and_save_jobs(
         add_log(run, "Initialized Working Nomads scraper", "info")
         await db.commit()
 
+        # Fetch existing job slugs from database for deduplication
+        log_to_console("📥 Fetching existing job slugs from database...")
+        add_log(run, "Fetching existing job slugs from database...", "info")
+        await db.commit()
+
+        existing_slugs_result = await db.execute(
+            select(Job.source_id).filter(Job.source == "working_nomads")
+        )
+        existing_slugs = set(row[0] for row in existing_slugs_result.fetchall())
+
+        log_to_console(f"✅ Found {len(existing_slugs)} existing job slugs in database")
+        add_log(run, f"Found {len(existing_slugs)} existing job slugs in database", "info")
+        await db.commit()
+
         # Scrape jobs
         log_to_console("🎯 Starting job scraping...")
         add_log(run, "Beginning job scraping process", "info")
@@ -105,7 +120,11 @@ async def scrape_and_save_jobs(
             add_log(run, message, level)
             await db.commit()
 
-        jobs_data = await scraper.scrape(progress_callback=progress_callback, job_limit=job_limit)
+        jobs_data = await scraper.scrape(
+            progress_callback=progress_callback,
+            job_limit=job_limit,
+            existing_slugs=existing_slugs
+        )
         stats["total"] = len(jobs_data)
 
         add_log(run, f"Scraped {len(jobs_data)} jobs from Working Nomads", "success")
@@ -118,16 +137,10 @@ async def scrape_and_save_jobs(
 
         for i, job_data in enumerate(jobs_data, 1):
             try:
-                # Check if job already exists
+                # Check if job already exists (use in-memory set for O(1) lookup)
                 source_id = job_data.get("source_id")
-                source = job_data.get("source")
 
-                existing_job = await db.execute(
-                    select(Job).filter(Job.source_id == source_id, Job.source == source)
-                )
-                existing = existing_job.scalar_one_or_none()
-
-                if existing:
+                if source_id in existing_slugs:
                     if i % 10 == 0 or i == 1:
                         log_to_console(f"  [{i}/{len(jobs_data)}] ⏭️  Already exists: {job_data['title']}")
                     stats["existing"] += 1
