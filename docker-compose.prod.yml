@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: zapply-postgres-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-zapply}
+      POSTGRES_USER: ${POSTGRES_USER:-zapply}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - zapply-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zapply} -d ${POSTGRES_DB:-zapply}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-vpetreski}/zapply-backend:${IMAGE_TAG:-latest}
+    container_name: zapply-backend-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-zapply}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-zapply}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      WORKING_NOMADS_EMAIL: ${WORKING_NOMADS_EMAIL}
+      WORKING_NOMADS_PASSWORD: ${WORKING_NOMADS_PASSWORD}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-vanja}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-1440}
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - app_logs:/app/logs
+      - app_data:/app/data
+    networks:
+      - zapply-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-vpetreski}/zapply-frontend:${IMAGE_TAG:-latest}
+    container_name: zapply-frontend-prod
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    networks:
+      - zapply-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+networks:
+  zapply-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  app_logs:
+    driver: local
+  app_data:
+    driver: local
