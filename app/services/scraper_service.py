@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import AppSettings, Job, Run, RunPhase, RunStatus, RunTriggerType, UserProfile
 from app.schemas import JobCreate
 from app.scraper import WorkingNomadsScraper
