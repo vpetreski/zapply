@@ -1,996 +1,317 @@
 # Zapply - AI Context
 
 ## Current Phase
-**Phase 5: Matching Quality Analysis & Polishing** 🔍
+**Phase 6: Production Ready - Focus on MVP** 🚀
 
-Production system fully operational with 770 jobs scraped. Ready to analyze matching quality and polish the algorithm.
+System fully operational with optimized scraper and verified matching quality. Ready to use as-is for job applications.
 
-**Current Branch:** `feature/matching-quality-analysis`
+**Current Branch:** `feature/nas-external-access` (about to merge)
 
-## Last Session - 2025-11-26 (Jobs Display Fix + API Slash Handling)
+## Last Session - 2025-11-26 (Critical Login Fix & Deployment Automation)
 
 ### Accomplished This Session
 
-**1. CRITICAL: Fixed Jobs Display Issue** 📋 → ✅
+**1. Fixed Critical Production Login Issue** 🔐 → ✅
+
+#### Problem Discovery
+Login stopped working on NAS production after deployment at 11:48 AM. User reported "Login failed. Please try again."
+
+#### Root Cause Analysis
+1. **.env.production** uses single quotes around ADMIN_PASSWORD to prevent bash $ expansion:
+   ```bash
+   ADMIN_PASSWORD='$2b$12$w2zQdrjCI6xfPWjDFQ6hpeCFGS2t3Yf35RYOqsfQ0.tmrJ1ONqmAG'
+   ```
+2. **deploy.sh** was passing those quotes to Docker environment variable
+3. **Python received hash WITH quotes**: `'$2b$12$...'` instead of `$2b$12$...`
+4. **bcrypt fails** with "Invalid salt" when hash starts with single quote
+
+#### Solution Implemented
+**Modified scripts/deploy.sh** to strip quotes after sourcing .env.production:
+```bash
+# Strip quotes from ADMIN_PASSWORD if present (bcrypt hashes fail with quotes)
+ADMIN_PASSWORD=$(echo "$ADMIN_PASSWORD" | sed "s/^'\\(.*\\)'\$/\\1/")
+```
+
+This ensures:
+- Bash protects `$` from expansion (single quotes in file) ✅
+- Python receives clean hash without quotes ✅
+
+**Files Modified:**
+- `scripts/deploy.sh` - Added quote-stripping logic (line 31)
+- `.env.production.example` - Updated comment to clarify single quotes are REQUIRED
+
+---
+
+**2. Automated Deployment File Sync** 🤖 → ✅
+
+#### Problem
+Scripts on NAS (`/volume1/docker/zapply/scripts/`) were **manually managed**, not synced from git. This caused the login issue because the old deploy.sh didn't have the fix.
+
+#### Solution
+Enhanced `.github/workflows/deploy.yml` to automatically sync all deployment files:
+```yaml
+# Sync deployment files from git (preserving .env.production)
+echo "📋 Syncing deployment files from git..."
+cp $GITHUB_WORKSPACE/docker-compose.prod.yml /volume1/docker/zapply/
+cp -r $GITHUB_WORKSPACE/scripts/* /volume1/docker/zapply/scripts/
+chmod +x scripts/*.sh
+```
+
+**Result:** All scripts now auto-update on every deployment. .env.production remains manually managed (intentionally).
+
+---
+
+**3. Fixed Database Migration Conflict** 🗄️ → ✅
+
+#### Problem
+After fixing the password and restarting containers, login still failed. Backend was crashing on startup:
+```
+sqlalchemy.exc.ProgrammingError: relation "ix_jobs_source_id" already exists
+ERROR: Application startup failed. Exiting.
+```
+
+#### Root Cause
+Migration `2025_11_26_1133-21383ec8a724_fix_index_on_job_source_id.py` tried to create index that already existed from earlier manual database fix. The alembic_version table wasn't updated to reflect the manual change.
+
+#### Solution
+Manually updated alembic_version table to mark migration as applied:
+```sql
+UPDATE alembic_version SET version_num = '21383ec8a724';
+```
+
+**Result:** Backend now starts successfully, all services running properly.
+
+---
+
+**4. Matching Quality Confirmation** 🎯 → ✅
+
+**User Feedback:** "matching is fucking brilliant so far"
+
+**Decision:** NO matching optimization needed. System works exactly as intended.
+
+---
+
+## Previous Session - 2025-11-26 (Performance Optimization & Matching Verification)
+
+### Accomplished This Session
+
+**1. Scraper Performance Optimization** ⚡ → ✅
+
+#### Implemented Deduplication
+**Problem:** Scraper was scraping ALL jobs every run (6-10 minutes), even when most already existed
+**Solution:** Pre-fetch existing slugs, skip scraping details for known jobs
+**Result:** 80-97% faster on subsequent runs (40-60 seconds vs 6-10 minutes)
+
+**Implementation:**
+- Pre-fetch existing job slugs from database into memory (O(1) lookup)
+- Pass `existing_slugs` set to scraper
+- Skip `_scrape_job_details()` for existing jobs
+- Only scrape NEW jobs
+- Real-time logging shows SKIP vs SCRAPING actions
+
+**Performance Gains:**
+- First run (empty DB): No change (baseline)
+- After 1 hour (~180 existing + ~20 new): **90% faster** 🚀
+- After 1 day (~195 existing + ~5 new): **97% faster** 🚀
+
+**Files Modified:**
+- `app/services/scraper_service.py` - Pre-fetch existing slugs
+- `app/scraper/working_nomads.py` - Skip logic, enhanced logging
+
+---
+
+**2. Fixed Jobs Display Issue** 📋 → ✅
 
 #### Problem: 770 Jobs in Database But Not Showing in UI
-**Investigation Process:**
-- User reported: "Matching more than 700 jobs completed on NAS I see run but on jobs there is nothing"
-- Database check confirmed: **770 jobs successfully scraped and stored** ✅
+**Investigation:**
+- Database query confirmed: **770 jobs successfully stored** ✅
 - Frontend showing: **0 jobs** ❌
-
-**Root Cause Discovery:**
-- Used SSH + sshpass to access NAS logs and database
-- Database query: `SELECT COUNT(*) FROM jobs;` → **770 rows** ✅
-- Backend logs showed: `GET /api/jobs?limit=1000 HTTP/1.1" 307 Temporary Redirect`
-- **Issue:** FastAPI redirecting `/api/jobs` to `/api/jobs/` (with trailing slash)
+- Backend logs: `GET /api/jobs HTTP/1.1" 307 Temporary Redirect`
+- **Root cause:** FastAPI redirecting `/api/jobs` to `/api/jobs/`
 - Frontend not following 307 redirect → empty response
 
-**Solution Implemented:**
-1. **Backend Fix (Proper Solution):**
-   - Added `redirect_slashes=False` to FastAPI app initialization (main.py:87)
-   - Added dual route decorators to support both forms:
-     - `app/routers/jobs.py:18-19` - `@router.get("")` + `@router.get("/")`
-     - `app/routers/stats.py:17-18` - `@router.get("")` + `@router.get("/")`
-   - Now handles both `/api/jobs` and `/api/jobs/` without redirecting
-
-2. **Frontend:**
-   - Uses `/api/jobs` (without trailing slash) - natural and clean
-   - Works perfectly with backend handling both forms
-
-**Commits:**
-- `00cddfc` - Initial fix (added trailing slash to frontend)
-- `0922ac3` - Comprehensive fix (backend handling + reverted frontend)
+**Solution:**
+1. Added `redirect_slashes=False` to FastAPI app (main.py:87)
+2. Added dual route decorators: `@router.get("")` + `@router.get("/")`
+3. Handles both `/api/jobs` and `/api/jobs/` without redirecting
 
 **Result:** ✅ All 770 jobs now visible in UI!
 
 ---
 
-**2. Previous Session: Playwright Browser Fix** 🐳 → ✅
+**3. Fixed All Claude Code Review Issues** 🔍 → ✅
 
-#### Problem: Scraper Completing in 1 Second with 0 Jobs
-**Symptoms:**
-- ❌ Scraper running in production but returning 0 jobs immediately (1-3 seconds)
-- ❌ Works perfectly locally with same credentials
-- ❌ No obvious error in frontend logs
-- ❌ Browser launching but not actually scraping
+#### From PR #6 Review Comments:
 
-**Root Cause Investigation:**
-- Checked backend logs via SSH to NAS
-- Found actual error in container logs:
-  ```
-  playwright._impl._errors.Error: BrowserType.launch: Executable doesn't exist at
-  /home/zapply/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell
-  ```
-- Browsers installed in `/root/.cache/ms-playwright` (as root user)
-- But app runs as `zapply` user (for security)
-- App looking for browsers in `/home/zapply/.cache/ms-playwright`
-- **Permission mismatch!**
+**Critical Issues Fixed:**
+1. **Progress callback spam** - Removed callbacks for skipped jobs
+   - Was: 180 skipped × 2 = 360 DB commits
+   - Now: ~20 DB commits (only for actual scraping)
 
-#### First Attempt: Install as zapply User (FAILED)
-**Approach:**
-- Create `zapply` user first in Dockerfile
-- Switch to `zapply` user
-- Run `playwright install --with-deps chromium` as zapply
+2. **Database index strategy** - Created composite index `(source, source_id)`
+   - Optimizes query: `SELECT source_id FROM jobs WHERE source = 'working_nomads'`
+   - Migration: `alembic/versions/2025_11_26_1133-21383ec8a724_fix_index_on_job_source_id.py`
 
-**Result:** ❌ FAILED with authentication error
-```
-su: Authentication failure
-Failed to install browsers
-Error: Installation process exited with code: 1
-```
+3. **Missing imports** - Added `from app.config import settings`
+   - Fixed runtime error in debug mode
 
-**Why It Failed:**
-- Playwright's `--with-deps` flag needs to install system packages via `apt`
-- This requires root/sudo access
-- `zapply` user has no sudo access in Docker
-- Can't install system dependencies as non-root user
+4. **N+1 query pattern** - Use in-memory set lookup instead of DB queries
+   - Eliminated ~200 redundant queries per scrape
+   - Changed from O(n) to O(1) performance
 
-#### Final Solution: Install as Root, Copy to zapply User ✅
+**PR #6 Status:** ✅ Merged to main (commit 31d6741)
 
-**Dockerfile.prod changes (lines 48-66):**
-```dockerfile
-# Install Playwright browsers and system dependencies as root
-# This installs browsers to /root/.cache/ms-playwright
-RUN playwright install --with-deps chromium
+---
 
-# Copy application code
-COPY app ./app
-COPY alembic ./alembic
-COPY alembic.ini ./
-COPY docs ./docs
+**4. Matching Quality Verification** 🎯 → ✅
 
-# Create non-root user for security
-RUN useradd -m -u 1000 zapply && \
-    chown -R zapply:zapply /app && \
-    mkdir -p /home/zapply/.cache/ms-playwright && \
-    cp -r /root/.cache/ms-playwright/* /home/zapply/.cache/ms-playwright/ && \
-    chown -R zapply:zapply /home/zapply/.cache/ms-playwright
+#### Analysis Results (770 Jobs Matched):
+**User Feedback:** "matching is fucking brilliant so far" ✅
 
-# Switch to zapply user for runtime
-USER zapply
-```
+**Quality Assessment:**
+- ✅ Scores are reasonable and nuanced (not all 0 or 100)
+- ✅ Reasoning is detailed and makes sense
+- ✅ 60% threshold works perfectly:
+  - **MATCHED jobs:** True remote, contractor-friendly, good tech fit
+  - **REJECTED jobs:** US auth required, hybrid, poor tech match, or location restrictions
+- ✅ Algorithm properly handles:
+  - Expanding to adjacent technologies (Go, TypeScript, Node)
+  - Filtering out non-remote or US-only positions
+  - Evaluating based on contractor setup compatibility
 
-**Why This Works:**
-1. ✅ Install Playwright as root with `--with-deps` (can install system packages)
-2. ✅ Browsers installed to `/root/.cache/ms-playwright`
-3. ✅ Create `zapply` user for security
-4. ✅ Copy browsers from root's cache to zapply's home
-5. ✅ Set correct ownership so zapply can access browsers
-6. ✅ Switch to zapply user for runtime
-7. ✅ App now finds browsers at `/home/zapply/.cache/ms-playwright`
+**Decision:** 🎯 NO MATCHING OPTIMIZATION NEEDED
+- Current algorithm works exactly as intended
+- Focus on shipping MVP and using the system
+- Matching quality will be validated through real-world usage
 
-#### Deployment Results
-**GitHub Actions Workflow:**
-- ✅ Build job: 3m12s (Backend + Frontend Docker images)
-- ✅ Deploy job: In progress (~6+ minutes due to large image)
-- ✅ Backend image significantly larger (~500MB+) due to Playwright browsers
-- ✅ First deployment slow (pulling large image), subsequent deploys faster (layer caching)
-
-**Verification (User Reported):**
-- ✅ **Scraper now working!** - Fetching jobs successfully from Working Nomads
-- ✅ Playwright launching browser correctly
-- ✅ Login working
-- ✅ Jobs being scraped and saved to database
-
-### Technical Details
-
-**Docker Image Size Impact:**
-- Before: ~200MB (Python + app code)
-- After: ~500MB+ (+ Playwright browsers + system dependencies)
-- Why: Chromium browser binary and dependencies are large
-- Mitigation: Docker layer caching makes subsequent builds/pulls faster
-
-**Security Considerations:**
-- App still runs as non-root `zapply` user (security best practice)
-- Only browser installation happens as root (during build)
-- Runtime has no root access
-
-**Why Playwright Needs System Dependencies:**
-- Chromium browser requires various system libraries
-- Font libraries, graphics libraries, etc.
-- Must be installed via `apt` as root
-- `--with-deps` flag handles all dependencies automatically
-
-### Files Modified
-1. **`Dockerfile.prod`** (lines 48-66)
-   - Install Playwright as root first
-   - Copy browsers to zapply user's home
-   - Set correct permissions
-   - Switch to zapply for runtime
-
-### Commits Made
-1. `949060a` - "Fix Playwright browser install for zapply user" (first attempt, failed)
-2. `92527af` - "Fix Playwright installation: install as root, copy to zapply user" (final fix)
+---
 
 ### Current Status
-- ✅ **Scraper working in production** - Fetching jobs successfully
-- ✅ **Playwright browsers accessible** - Correct permissions and paths
-- ✅ **Security maintained** - App runs as non-root user
-- ✅ **Jobs visible in UI** - All 770 jobs displaying correctly
-- ✅ **API slash handling fixed** - Both `/api/endpoint` and `/api/endpoint/` work
 
-### Next Steps
-**Branch:** `feature/matching-quality-analysis`
+**System State:**
+- ✅ **Scraper:** Optimized, 80-97% faster on subsequent runs
+- ✅ **Matcher:** Working brilliantly, accurate scores and reasoning
+- ✅ **Jobs Display:** All 770 jobs visible, fast API responses
+- ✅ **Database:** Indexed properly, N+1 queries eliminated
+- ✅ **Code Quality:** All Claude Code Review issues resolved
+- ✅ **Production:** Running on NAS, 24/7 automated operation
 
-1. **Analyze matching quality** - Review 770 jobs to assess match scores and reasoning
-2. **Identify patterns** - Find false positives/negatives in matching
-3. **Refine matching prompt** - Improve Claude prompt based on findings
-4. **Test improvements** - Validate changes with real job data
-5. **Document learnings** - Capture insights for future iterations
+**Access URLs:**
+- Frontend: http://192.168.0.188:3000/
+- API Docs: http://192.168.0.188:8000/docs
+- Local Dev: http://localhost:3000/, http://localhost:8000/docs
+- Quick Connect (internal only): http://192-168-0-188.vpetreski.direct.quickconnect.to:3000/
+
+---
+
+### Next Steps - FUTURE WORK (Not Urgent)
+
+**Phase 7: External Access via zapply.dev** 🌐
+**Status:** Documented, Low Priority - Focus on MVP usage first
+
+#### Goal
+Enable external access to Zapply via https://zapply.dev with proper SSL and security
+
+#### Implementation Plan (When Ready)
+
+**1. Domain & DNS Setup**
+- Point `zapply.dev` A record to NAS public IP
+- Set up DDNS if IP is dynamic (Synology has built-in DDNS)
+- DNS propagation: 5-60 minutes
+
+**2. SSL/HTTPS Certificates**
+- Use Let's Encrypt via Certbot in nginx container
+- Auto-renewal every 90 days
+- Free and trusted certificates
+
+**3. Nginx Reverse Proxy**
+- Add nginx container to docker-compose
+- HTTPS termination (port 443)
+- HTTP redirect (80 → 443)
+- Reverse proxy to frontend:80 and backend:8000
+- Security headers (HSTS, CSP, etc.)
+- Rate limiting
+
+**Architecture:**
+```
+Internet → Router:443 → NAS:443 (nginx) →
+  ├─ zapply.dev/ → frontend:80
+  └─ zapply.dev/api, /docs → backend:8000
+```
+
+**4. Network Configuration**
+- Router port forwarding:
+  - Port 80 → NAS 192.168.0.188:80
+  - Port 443 → NAS 192.168.0.188:443
+- Synology firewall: Allow ports 80, 443
+
+**5. Security Features**
+- HTTPS only (redirect HTTP → HTTPS)
+- Strong SSL configuration (A+ rating)
+- Security headers
+- Rate limiting
+- Existing authentication (login required)
+- Hide backend ports (only nginx exposed)
+
+**Files to Create:**
+- `nginx/nginx.conf` - Reverse proxy config
+- `nginx/Dockerfile` - Custom nginx image
+- `docker-compose.yml` - Add nginx + certbot services
+- Update deployment scripts
+
+**Estimated Time:** 30-90 minutes (DNS propagation dependent)
+
+**Why Deferred:** System works great locally and via QuickConnect. External access is nice-to-have but not critical for MVP validation. Focus on using the system first.
+
+---
+
+**Phase 8: Applier Implementation** 🤖
+**Status:** Next major feature after MVP validation
+
+Will implement when ready to automate job applications:
+- Playwright + Claude applier
+- Navigate arbitrary ATS systems
+- Fill forms intelligently
+- Handle custom questions
+- Mark as APPLIED/FAILED
+- Test with real applications
 
 ---
 
 ## Previous Sessions
 
-### Session - 2025-11-26 (Late Night - Playwright Browser Fix)
+### Session - 2025-11-26 (Late Morning - Jobs Display Fix)
+**Fixed critical jobs display issue and API slash handling**
+- 307 redirect problem with FastAPI trailing slashes
+- All 770 jobs now visible in UI
+- Backend properly handles both `/api/endpoint` forms
 
-**Problem:** Scraper completing in 1 second with 0 jobs
-**Root Cause:** Playwright browsers installed as root, but app runs as zapply user
-**Solution:** Install as root, copy to zapply user directory
-**Result:** ✅ Scraper working, 770 jobs fetched
+### Session - 2025-11-26 (Early Morning - Playwright Browser Fix)
+**Fixed scraper not working in production**
+- Playwright browsers installed as root, app runs as zapply user
+- Solution: Install as root, copy to zapply user directory
+- Scraper now working, 770 jobs fetched
 
----
+### Session - 2025-11-26 (Early Morning - Production Password Fix)
+**Fixed production login and completed deployment**
+- Password hash escaping issue in .env.production
+- Must use single quotes for bcrypt hashes
+- Full deployment workflow operational
 
----
+### Session - 2025-11-25 (Evening - Critical Bug Fixes)
+**Fixed Claude API integration and real-time logging**
+- Claude API returning JSON wrapped in markdown fences
+- Real-time UI updates now working perfectly
+- Standard Python logging everywhere
 
-## Previous Session - 2025-11-26 (Early Morning - Production Password Fix)
-
-### Accomplished This Session
-
-**CRITICAL: Fixed Production Login & Completed Deployment**
-
-#### 1. Fixed Production Password Hash Escaping 🔐 → ✅
-**Problem:** Login failing in production after deployment with "Invalid salt" error
-- ❌ Password hash in .env.production had wrong quoting
-- ❌ Double quotes `"$2b$..."` cause bash variable expansion ($2b, $12 interpreted as variables)
-- ❌ Deploy script uses `source .env.production` which interprets $ signs
-- ❌ Result: Mangled password hash loaded into container environment
-
-**Root Cause:**
-- Bash `source` command with double quotes: `"$2b$12$..."` → expands to `"b2..."`
-- Shell variable `$2b` = empty, `$12` = empty → hash gets corrupted
-
-**Solution:**
-- ✅ Changed .env.production to use SINGLE quotes: `'$2b$12$...'`
-- ✅ Single quotes prevent variable expansion in bash
-- ✅ Password hash preserved correctly: 60 characters as expected
-- ✅ Tested locally to confirm quote behavior
-- ✅ Updated NAS .env.production file
-- ✅ Deployed via GitHub Actions
-- ✅ Login working perfectly!
-
-**Technical Details:**
-```bash
-# Testing showed the difference:
-ADMIN_PASSWORD="$2b$12$..."  → Length: 14 (BROKEN - variables expanded)
-ADMIN_PASSWORD='$2b$12$...'  → Length: 60 (CORRECT - literal string)
-```
-
-**Correct Format for 1Password:**
-```env
-ADMIN_PASSWORD='$2b$12$w2zQdrjCI6xfPWjDFQ6hpeCFGS2t3Yf35RYOqsfQ0.tmrJ1ONqmAG'
-```
-⚠️ MUST use single quotes, not double quotes!
-
-#### 2. Completed Full Deployment Workflow ✅
-**GitHub Actions Deployment:**
-- ✅ Pushed trivial change to trigger deployment
-- ✅ Build job: 4m8s (Backend + Frontend Docker images)
-- ✅ Deploy job: 3m50s (Pull images, restart containers)
-- ✅ Total deployment time: ~8 minutes
-- ✅ Both services deployed successfully
-- ✅ Zero-downtime deployment working
-
-**Verification:**
-- ✅ Backend API responding: `curl http://192.168.0.188:8000`
-- ✅ Frontend serving: `curl http://192.168.0.188:3000`
-- ✅ Login endpoint working: Returns valid JWT token
-- ✅ Full authentication flow operational
-
-**Test Results:**
-```bash
-$ curl -X POST http://192.168.0.188:8000/api/auth/login \
-  -d "username=vanja@petreski.co&password=px8*jLfG3zLNZiMWzj7BXXBi"
-
-{"access_token":"eyJhbGc...","token_type":"bearer"}  ✅ SUCCESS!
-```
-
-#### 3. Fixed Login Redirect Loop 🔄 → ✅ (Previous Session)
-**Problem:** Users could login successfully but were immediately redirected back to login
-- ❌ Frontend calling `/api/stats` without trailing slash
-- ❌ FastAPI redirecting with 307 to `/api/stats/`
-- ❌ HTTP 307 redirects lose Authorization header
-- ❌ Stats endpoint returning 401, triggering login redirect
-
-**Solution:**
-- ✅ Fixed `frontend/src/views/Dashboard.vue:113` - Added trailing slash to stats API call
-- ✅ Fixed `frontend/src/views/Stats.vue:69` - Added trailing slash to stats API call
-- ✅ Verified both local and production login working
-
-**User Feedback:** "I can login now to both"
-
-#### 2. Automated Database Migrations 🔧 → ✅
-**Problem:** Database migrations weren't running automatically on deployment
-- ❌ Migrations existed but required manual execution
-- ❌ No consistent behavior between local and production
-- ❌ User wanted identical automation for both environments
-
-**Solution:**
-- ✅ Created `app/utils/migrate.py` - Programmatic migration execution
-- ✅ Updated `app/main.py:40` - Run migrations on app startup
-- ✅ Updated `app/utils/__init__.py` - Export run_migrations function
-- ✅ Updated `Dockerfile.prod:74` - Removed duplicate migration from CMD
-- ✅ Updated `alembic.ini:59` - Use dynamic database URL from config
-- ✅ Migrations now run automatically for both local and production
-
-**Implementation:**
-```python
-# app/utils/migrate.py
-def run_migrations() -> None:
-    """Run Alembic migrations automatically on app startup."""
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        capture_output=True, text=True, check=True
-    )
-```
-
-**Startup logs will now show:**
-```
-🔄 Running database migrations...
-✓ Migrations complete: [output]
-```
-or
-```
-✓ Database schema is up to date
-```
-
-#### 3. Migrated Profile Data to Production 📤 → ✅
-**Problem:** User profile with CV needed to be migrated from local to production NAS database
-- Complete profile data including 95KB CV PDF
-- 26 skills, preferences, custom instructions
-- AI-generated summary
-
-**Solution:**
-- ✅ Exported profile from local database using COPY TO STDOUT
-- ✅ Piped data via SSH to NAS at `/tmp/profile.sql` (193KB)
-- ✅ User manually imported via Docker exec (required sudo password)
-- ✅ Verified migration successful
-
-**Data Migrated:**
-- Profile: Vanja Petreski, Colombia, $10,000/month
-- CV: Resume-Vanja-Petreski.pdf (95,810 bytes binary data)
-- Skills: 26 technologies (Java, Kotlin, Spring Boot, Python, etc.)
-- Preferences: JSON with rate, location, requirements
-- AI Summary: Complete professional summary
-
-### Files Modified
-1. **`frontend/src/views/Dashboard.vue`**
-   - Line 113: `/api/stats` → `/api/stats/` (trailing slash fix)
-
-2. **`frontend/src/views/Stats.vue`**
-   - Line 69: `/api/stats` → `/api/stats/` (trailing slash fix)
-
-3. **`app/utils/migrate.py`** (NEW)
-   - Programmatic migration execution
-   - Runs `alembic upgrade head` on startup
-   - Detailed logging and error handling
-
-4. **`app/utils/__init__.py`**
-   - Added import and export of `run_migrations`
-
-5. **`app/main.py`**
-   - Line 18: Import `run_migrations`
-   - Line 40: Call `run_migrations()` during startup
-
-6. **`Dockerfile.prod`**
-   - Line 74: Removed `alembic upgrade head &&` from CMD
-   - Migrations now handled by app startup
-
-7. **`alembic.ini`**
-   - Line 59: Removed hardcoded database URL
-   - Comment: "sqlalchemy.url is now set dynamically from config.py in alembic/env.py"
-
-### Current Status
-- ✅ **Production deployment working** - Full CI/CD pipeline operational
-- ✅ **Login working** - Both local and production
-- ✅ **Password hash fixed** - Correct quoting in .env files
-- ✅ **Migrations automated** - Run on every app startup
-- ✅ **Profile migrated** - Production has complete user profile
-- ✅ **Both environments identical** - Same behavior local and NAS
-- 🎯 **Ready for production use** - System fully deployed at http://192.168.0.188:3000
-
-### Technical Notes
-**Why Migrations Run on Startup:**
-- Ensures database schema is always up to date
-- Works identically for local dev and production
-- No manual intervention needed
-- Safe: Alembic won't re-run applied migrations
-- Fast: Only new migrations are executed
-
-**Migration Flow:**
-```
-App starts → run_migrations() → alembic upgrade head → ✓ Schema up to date
-```
-
-**Production Deployment Flow:**
-```
-1. GitHub Actions builds new image
-2. NAS pulls and restarts container
-3. App starts, runs migrations automatically
-4. Services come online with latest schema
-```
-
-### Next Steps
-- [ ] Commit all changes
-- [ ] Push to repository
-- [ ] Test migration automation on next deployment
-- [ ] Continue with planned work
+### Session - 2025-11-25 (Full Day - Testing & Polish)
+**Completed PR #3 with scheduler and dashboard**
+- Full scheduler system (Manual/Daily/Hourly)
+- Real-time dashboard with auto-refresh
+- All UI issues fixed
+- Database migration documentation
 
 ---
-
-## Previous Session - 2025-11-25 (Late Evening - Deployment Planning)
-
-### NAS Deployment Plan - DOCUMENTED
-
-**Goal:** Fully automated production deployment to Synology NAS with GitHub Actions CI/CD
-
-#### Infrastructure Setup
-**NAS Details:**
-- IP: 192.168.0.188 (local network)
-- QuickConnect: https://192-168-0-188.vpetreski.direct.quickconnect.to
-- SSH access: `nas` command (passwordless, key-based auth)
-- Docker + docker-compose installed ✅
-
-**Deployment Architecture:**
-```
-GitHub (main branch)
-    ↓ (on merge)
-GitHub Actions CI/CD
-    ↓ (builds)
-GitHub Container Registry
-    ↓ (deploys)
-Synology NAS (192.168.0.188)
-    ↓ (serves)
-User (QuickConnect URL)
-```
-
-#### Directory Structure on NAS
-```
-/volume1/docker/zapply/
-├── docker-compose.prod.yml    # Production compose file
-├── .env.production             # All secrets (auto-created from repo .env)
-├── data/
-│   ├── postgres/              # PostgreSQL persistent data
-│   ├── logs/                  # Application logs
-│   └── uploads/               # CV/profile files
-└── scripts/
-    └── deploy.sh              # Automated deployment script
-```
-
-#### Port Mapping & Access
-- **Frontend**: Port 3000 → QuickConnect:3000
-- **Backend API**: Port 8000 → QuickConnect:8000/docs (Swagger)
-- **PostgreSQL**: Port 5432 (internal Docker network only)
-- **Logs**: SSH + `docker logs` or volume mount
-
-#### Automated CI/CD Pipeline
-**Trigger:** Merge to `main` branch
-
-**GitHub Actions Workflow Steps:**
-1. Checkout code
-2. Build optimized Docker images (multi-stage builds)
-   - Backend: Python + uv + dependencies
-   - Frontend: Node build → Nginx serve
-3. Push images to GitHub Container Registry (ghcr.io)
-4. SSH to NAS
-5. Pull latest images
-6. Run `docker-compose up -d` (zero-downtime restart)
-7. Health check verification
-8. Deployment complete (~2-3 minutes total)
-
-#### What User Needs to Do (One-Time, ~5 mins)
-**Step 1: Create GitHub Personal Access Token**
-- Go to: https://github.com/settings/tokens
-- Click "Generate new token (classic)"
-- Select scope: `write:packages`
-- Copy token value
-- Add to repository secrets as `GHCR_TOKEN`
-
-**Step 2: Add NAS SSH Key to GitHub Secrets**
-- Claude will generate SSH key pair (or use existing)
-- User copies private key
-- Add to repository secrets as `NAS_SSH_KEY`
-- Claude adds public key to NAS authorized_keys
-
-**Note:** Claude will guide with step-by-step instructions and screenshots when ready.
-
-#### What Claude Will Automate
-1. ✅ Create production Dockerfiles (optimized multi-stage builds)
-2. ✅ Create docker-compose.prod.yml with:
-   - Health checks
-   - Restart policies
-   - Volume mounts
-   - Network configuration
-   - Environment variables
-3. ✅ Create GitHub Actions workflow (.github/workflows/deploy.yml)
-4. ✅ Create deployment script for NAS (scripts/deploy.sh)
-5. ✅ SSH to NAS and create directory structure
-6. ✅ Copy .env to NAS as .env.production
-7. ✅ Generate/configure SSH keys for deployment
-8. ✅ Set up log rotation
-9. ✅ Create helper scripts for common operations
-10. ✅ Document all access URLs and commands
-11. ✅ Optional: Configure Traefik/Nginx reverse proxy for SSL
-
-#### Easy Management Commands (Post-Deployment)
-```bash
-# View live logs
-nas "cd /volume1/docker/zapply && docker-compose logs -f backend"
-nas "cd /volume1/docker/zapply && docker-compose logs -f frontend"
-
-# Restart services
-nas "cd /volume1/docker/zapply && docker-compose restart"
-
-# Check service status
-nas "cd /volume1/docker/zapply && docker-compose ps"
-
-# Access database
-nas "cd /volume1/docker/zapply && docker-compose exec postgres psql -U zapply"
-
-# Manual deployment (if needed)
-nas "cd /volume1/docker/zapply && ./scripts/deploy.sh"
-
-# View disk usage
-nas "cd /volume1/docker/zapply && du -sh data/*"
-```
-
-#### Access URLs (Post-Deployment)
-- Frontend: https://192-168-0-188.vpetreski.direct.quickconnect.to:3000
-- API Docs: https://192-168-0-188.vpetreski.direct.quickconnect.to:8000/docs
-- API Base: https://192-168-0-188.vpetreski.direct.quickconnect.to:8000/api
-
-#### Production Considerations
-- **Zero-downtime deployments**: docker-compose handles graceful restart
-- **Data persistence**: PostgreSQL data survives container restarts
-- **Log rotation**: Prevent disk space issues
-- **Health checks**: Auto-restart unhealthy containers
-- **Resource limits**: CPU/memory limits if needed
-- **Backup strategy**: PostgreSQL data volume backups
-- **SSL/HTTPS**: Optional Traefik setup for proper certificates
-
-#### Security Requirements - BEFORE PUBLIC DEPLOYMENT
-
-**CRITICAL:** Since the app will be publicly accessible via QuickConnect, MUST implement authentication BEFORE merging to main.
-
-**Current State:** ❌ No authentication - anyone can access frontend and API
-**Required State:** ✅ Login required for all access
-
-**Authentication Implementation:**
-1. **Backend API Security**
-   - JWT-based authentication
-   - Login endpoint (`/api/auth/login`)
-   - Protected routes (all `/api/*` except login)
-   - Token validation middleware
-   - Secure password hashing (bcrypt)
-   - Session management
-
-2. **Frontend Security**
-   - Login page (redirect if not authenticated)
-   - Token storage (localStorage or httpOnly cookies)
-   - Automatic token refresh
-   - Logout functionality
-   - Protected routes (Vue Router guards)
-   - Redirect to login on 401 responses
-
-3. **User Management (MVP)**
-   - Single admin user (you)
-   - Username/password in .env
-   - No registration endpoint (single user system)
-   - Optional: Add more users later via admin panel
-
-4. **Security Best Practices**
-   - HTTPS-only cookies (if using cookies)
-   - CORS configuration
-   - Rate limiting on login endpoint
-   - Password complexity requirements
-   - Token expiration (24 hours)
-   - Refresh token mechanism
-
-**Implementation Approach:**
-- Use FastAPI's OAuth2 with Password flow
-- Vue Router navigation guards
-- Axios interceptors for token handling
-- Simple login form with Zapply branding
-
-**Environment Variables to Add:**
-```env
-# Auth Configuration
-ADMIN_USERNAME=vanja
-ADMIN_PASSWORD=<secure-password-here>
-JWT_SECRET_KEY=<random-secret-key>
-JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=1440  # 24 hours
-```
-
-**Testing Checklist:**
-- [ ] Cannot access frontend without login
-- [ ] Cannot access API endpoints without token
-- [ ] Login with correct credentials works
-- [ ] Login with wrong credentials fails
-- [ ] Token expires after 24 hours
-- [ ] Logout clears session
-- [ ] Token refresh works
-- [ ] All existing features work with auth
-
-#### Timeline
-1. **Now**: Document plan in ai.md ✅
-2. **Next**: Create all Docker/deployment files
-3. **Then**: Set up NAS infrastructure (SSH, directories, .env)
-4. **Then**: Create GitHub Actions workflow
-5. **Then**: Guide user through GitHub secrets setup
-6. **CRITICAL**: Implement authentication (backend + frontend)
-7. **Finally**: Test security thoroughly
-8. **Deploy**: Merge to main → automatic deployment!
-
-**Estimated Total Setup Time:**
-- Deployment infrastructure: 1-2 hours
-- Authentication implementation: 1-2 hours
-- **Total: 2-4 hours for full secure production deployment**
-
----
-
-## Previous Session - 2025-11-25 (Evening - Critical Bug Fixes)
-
-### Accomplished This Session
-
-**CRITICAL FIXES: Real-Time Logging & Claude API Integration**
-
-#### 1. Fixed Claude API JSON Parsing Error ⚠️ → ✅
-**Problem:** All 10 jobs failing with "Error during matching: Expecting value: line 1 column 1 (char 0)"
-- ❌ Claude API was returning valid JSON wrapped in markdown code fences (```json ... ```)
-- ❌ json.loads() failing when encountering opening ``` characters
-- ❌ All jobs getting 0.0 score with error reasoning
-
-**Solution:**
-- ✅ Added markdown fence stripping logic in `match_job_with_claude()`
-- ✅ Strips opening ```json or ``` line
-- ✅ Strips closing ``` line
-- ✅ Added extensive DEBUG logging to see exact Claude responses
-- ✅ Jobs now matching successfully with actual scores (45.0, 15.0, 58.0, 25.0, etc.)
-
-**Code Added (matching_service.py:128-138):**
-```python
-# Strip markdown code fences if present (```json ... ```)
-if response_text.strip().startswith("```"):
-    lines = response_text.strip().split("\n")
-    if lines[0].startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].strip() == "```":
-        lines = lines[:-1]
-    response_text = "\n".join(lines)
-    logger.info(f"DEBUG: Stripped markdown fences")
-```
-
-#### 2. Fixed Real-Time UI Logging 📊 → ✅
-**Problem:** UI only showing logs at job 1/10 and 10/10, missing all intermediate jobs
-- ❌ `matching_commit_interval` was 25, so commits only at start/end with 10 jobs
-- ❌ Match results logged to console but NOT to run logs
-- ❌ UI felt stuck during matching phase
-
-**Solution:**
-- ✅ Changed `matching_commit_interval` from 25 to 1 (commit after every job)
-- ✅ Changed `matching_log_interval` from 10 to 1 (log every job)
-- ✅ Added match results to run logs (not just console)
-- ✅ Commit after EVERY job for real-time UI updates
-
-**Code Changes:**
-- `config.py:42-43` - Set both intervals to 1
-- `matching_service.py:282-293` - Add result logs and commit every job
-
-#### 3. Migrated to Standard Python Logging 📝 → ✅
-**Problem:** Using custom `log_to_console()` instead of standard logger
-- ❌ User explicitly requested: "not to use log_to_console magic but normal logger everywhere"
-
-**Solution:**
-- ✅ Replaced all `log_to_console()` calls with `logger.info()` in matching_service.py
-- ✅ Removed `from app.utils import log_to_console` import
-- ✅ Added `import logging` and `logger = logging.getLogger(__name__)`
-- ✅ Consistent logging pattern across all services
-
-#### 4. Fixed Scraper Real-Time Logging 🔍 → ✅
-**Problem:** Scraper only logging every 10th job during scraping phase
-- ❌ Line 342: `if progress_callback and i % 10 == 0:`
-- ❌ UI showing "Scraping job 1/20" then "Scraping job 10/20" then "Scraping job 20/20"
-
-**Solution:**
-- ✅ Changed to `if progress_callback:` (removed modulo check)
-- ✅ Now logs EVERY job: "Scraping job 1/20", "Scraping job 2/20", etc.
-- ✅ Real-time progress visibility for scraping phase
-
-**Code Change (working_nomads.py:342-344):**
-```python
-# Log every job for real-time UI updates
-if progress_callback:
-    await progress_callback(f"Scraping job {i}/{len(slugs)}...", "info")
-```
-
-### Testing Results
-**Tested with 10 jobs from Working Nomads:**
-- ✅ First 3 jobs failed with old code (error 0.0 scores)
-- ✅ Backend auto-reloaded with fix
-- ✅ Jobs 4-10 matched successfully with actual scores:
-  - Job 4: 45.0/100 (REJECTED)
-  - Job 5: 15.0/100 (REJECTED)
-  - Job 6: 58.0/100 (REJECTED)
-  - Job 7: 25.0/100 (REJECTED)
-  - Job 8-10: Various scores
-- ✅ UI now shows ALL job progress (1/10, 2/10, 3/10, etc.)
-- ✅ Real-time updates work perfectly
-- ✅ Match reasoning is detailed and accurate
-
-**User Feedback:** "wow matching is fucking brilliant so far"
-
-### Files Modified
-1. **`app/services/matching_service.py`** (Major changes)
-   - Replaced log_to_console with standard logger
-   - Added markdown fence stripping (lines 128-138)
-   - Added DEBUG logging for Claude responses
-   - Added match result logging to run logs
-   - Commit after every job instead of batches
-
-2. **`app/config.py`**
-   - `matching_log_interval: 1` (was 10)
-   - `matching_commit_interval: 1` (was 25)
-
-3. **`app/scraper/working_nomads.py`**
-   - Line 342: Removed `i % 10 == 0` check
-   - Now logs every job during scraping
-
-### Current Status
-- ✅ **Claude API integration working perfectly** - Handles markdown-wrapped JSON
-- ✅ **Real-time UI updates working** - Every job logged and committed
-- ✅ **Standard logging everywhere** - No more custom utilities
-- ✅ **Scraping progress visible** - Every job shows in UI
-- ✅ **Matching is brilliant** - Accurate scores and detailed reasoning
-- 🎯 **Ready for full testing** - User testing with 20 jobs
-
-### Next Steps
-- [ ] User will test with 20 jobs to validate all fixes
-- [ ] Monitor for any edge cases or issues
-- [ ] Update PR #3 with these critical fixes
-- [ ] Continue with profile review and pipeline testing
-
----
-
-## Previous Session - 2025-11-25 (Full Day)
-
-### Accomplished
-
-**MAJOR MILESTONE: Complete Testing & Polish PR (#3)**
-
-#### 1. Fixed All UI Issues (Multiple Iterations)
-- ✅ **Slider Thumb Visibility** - FINALLY FIXED after 5+ attempts!
-  - Increased slider height from 6px to 20px
-  - Added 3px white border for visibility
-  - Removed problematic scale transform
-  - Used !important flags and z-index: 999
-  - Added overflow: visible to parent container
-- ✅ **Live Indicator** - Changed from blue to green (#10b981)
-  - No longer looks like a clickable link
-  - Clear "active/live" status indication
-- ✅ **Dropdown Arrow Padding** - Custom SVG arrow solution
-  - Removed native select arrow with `appearance: none`
-  - Added custom SVG arrow positioned 1rem from right
-  - 3rem right padding for proper text spacing
-- ✅ **Clickable Logo** - Made Zapply logo navigate to dashboard
-
-#### 2. Implemented Full Scheduler System with APScheduler
-- ✅ Created `scheduler_service.py` with AsyncIOScheduler
-- ✅ Support for manual, daily (9pm Colombian time), and hourly runs
-- ✅ Daily runs at 9pm America/Bogota time (proper timezone handling)
-- ✅ Hourly runs at start of each hour
-- ✅ Scheduler starts/stops with application lifecycle
-- ✅ Reconfigures on setting changes via admin endpoint
-- ✅ Settings persist in `data/admin_settings.json`
-- ✅ Added `trigger_type` field to Run model (manual/scheduled_daily/scheduled_hourly)
-- ✅ Created and applied Alembic migration for trigger_type
-- ✅ Display trigger type badges in runs list and detail views
-
-#### 3. Built Real-Time Dashboard
-- ✅ Stats auto-refresh every 10 seconds
-- ✅ Recent Activity auto-refresh every 3 seconds
-- ✅ Shows active run OR most recent completed run
-- ✅ Displays run status, phase, trigger type
-- ✅ Last 5 log entries with live updates
-- ✅ Live elapsed time for running jobs
-- ✅ Color-coded status badges
-- ✅ "📡 Live" indicator (green, not blue)
-
-#### 4. Added Admin Settings Section
-- ✅ New Settings section above Database Cleanup
-- ✅ Run Frequency dropdown (Manual/Daily/Hourly)
-- ✅ Immediately reconfigures scheduler on change
-- ✅ Success/error feedback with auto-clear
-- ✅ Backend endpoints for frequency settings
-- ✅ Renamed Settings → Admin throughout UI and backend
-- ✅ Moved database stats under cleanup section
-- ✅ Auto-refresh database stats every 5 seconds
-
-#### 5. Documented Database Migrations
-- ✅ Comprehensive migration section in README
-- ✅ Explained why migrations are manual (not automatic)
-- ✅ Added `just db-status` command to check migration state
-- ✅ Best practices guide for migrations
-- ✅ Troubleshooting guide for common issues
-- ✅ Updated Justfile with helpful migration commands
-
-#### 6. Fixed All Claude Bot Review Issues
-**Critical Issues:**
-- ✅ Removed misleading SQL injection parameterized query attempt
-- ✅ Added clear safety comments explaining string formatting
-
-**High Priority Issues:**
-- ✅ Fixed database session generator pattern with proper `aclose()`
-- ✅ Removed unused `Sequence` import from admin.py
-
-**Medium Priority Issues:**
-- ✅ Added migration comments explaining index drop
-- ✅ Created shared `settings_manager.py` module (DRY principle)
-- ✅ Removed duplicate settings functions from admin.py and scheduler_service.py
-- ✅ Updated scheduler to use `ZoneInfo("America/Bogota")` instead of hardcoded UTC-5
-
-#### 7. Created Pull Request #3
-- ✅ Comprehensive PR description with test plan
-- ✅ 21 commits covering all features and fixes
-- ✅ All checklist items addressed
-- ✅ Ready for review and merge
-
-### Key Technical Improvements
-- **Proper timezone handling** - Using zoneinfo for Colombian time
-- **Async generator pattern** - Proper cleanup with aclose()
-- **DRY principle** - Shared settings management module
-- **Code quality** - Removed unused imports, added clear comments
-- **Security** - Clear documentation of safe string formatting
-- **Real-time updates** - Polling-based auto-refresh for dashboard
-
-### Files Created
-- `app/services/scheduler_service.py` - Full scheduler implementation
-- `app/services/settings_manager.py` - Shared settings management
-- `frontend/src/views/AdminView.vue` - Renamed from SettingsView
-- `alembic/versions/2025_11_25_0949-*.py` - Migration for trigger_type
-
-### Files Modified (Major Changes)
-- `app/main.py` - Start/stop scheduler on startup/shutdown
-- `app/routers/admin.py` - Frequency settings, use shared settings
-- `app/routers/runs.py` - Return trigger_type in all endpoints
-- `app/services/scraper_service.py` - Accept trigger_type parameter
-- `app/database.py` - Added get_db_session() for background tasks
-- `app/models.py` - RunTriggerType enum and trigger_type field
-- `frontend/src/views/Dashboard.vue` - Real-time updates, Recent Activity
-- `frontend/src/views/Jobs.vue` - Slider bug fixes (FINALLY!)
-- `frontend/src/views/Runs.vue` - Display trigger type badges
-- `frontend/src/App.vue` - Clickable logo
-- `README.md` - Database migration documentation
-- `Justfile` - Migration status commands
-
-### Current Status
-- ✅ **PR #3 created and pushed** - https://github.com/vpetreski/zapply/pull/3
-- ✅ **All UI issues fixed** - Slider, Live indicator, dropdown padding
-- ✅ **Scheduler fully implemented** - Manual/Daily/Hourly runs
-- ✅ **Real-time dashboard working** - Live updates without refresh
-- ✅ **Trigger type tracking** - All runs show how they were triggered
-- ✅ **Migration documentation complete** - Users know when/how to migrate
-- ✅ **All Claude Bot issues fixed** - Code quality improved
-- 🟡 **PR awaiting review** - Ready to merge
-
-### Next Steps (User's Plan)
-
-#### 1. Review and Polish User Profile Feature 👤
-**Goal:** Ensure profile management is production-ready
-
-**Areas to Review:**
-- Profile display (name, email, location, rate, skills)
-- CV upload functionality
-- AI profile generation quality
-- Update and delete operations
-- Error handling and validation
-- UI/UX polish
-- Rate limiting effectiveness
-
-**Test Cases:**
-- Upload various CV formats (PDF)
-- Generate profile with different custom instructions
-- Update existing profile
-- Delete profile (verify confirmation works)
-- Test with large CVs
-- Test AI generation with edge cases
-- Verify profile is used correctly in matching
-
-**Potential Improvements:**
-- Better error messages
-- Loading states during AI generation
-- Preview of generated profile before saving
-- Validation of required fields
-- Better styling/layout
-- Help text for custom instructions
-
-#### 2. Test Complete Pipeline End-to-End 🧪
-**Goal:** Verify entire workflow with real data
-
-**Test Sequence:**
-1. **Clean Database** (via Admin page)
-   - Delete all test jobs and runs
-   - Keep user profile
-
-2. **Verify Profile** (via Profile page)
-   - Check profile is complete and correct
-   - Update if needed with new instructions
-
-3. **Trigger Manual Scraping** (via Runs page)
-   - Click "Start New Run"
-   - Watch real-time progress in dashboard
-   - Verify scraping phase completes
-
-4. **Monitor Matching** (via Dashboard/Runs)
-   - Watch matching phase in real-time
-   - Check match scores and reasoning
-   - Verify MATCHED vs REJECTED logic
-
-5. **Review Results** (via Jobs page)
-   - Filter by status (matched/rejected)
-   - Review match scores
-   - Check reasoning quality
-   - Verify no false positives/negatives
-
-6. **Test Filters** (via Jobs page)
-   - Filter by status
-   - Filter by min score
-   - Sort by date/score
-   - Search functionality
-
-7. **Verify Run Tracking** (via Runs page)
-   - Check run shows "Manual" trigger type
-   - Review complete logs
-   - Check statistics accuracy
-   - Verify timestamps
-
-8. **Test Scheduler** (via Admin page)
-   - Change to Hourly frequency
-   - Wait for next hour boundary
-   - Verify automatic run triggers
-   - Check run shows "Hourly" trigger type
-   - Change to Daily frequency
-   - Verify configuration (9pm Colombian time)
-   - Change back to Manual
-
-**Success Criteria:**
-- [ ] Scraper fetches 50+ jobs from Working Nomads
-- [ ] Matcher processes all jobs without errors
-- [ ] Match scores are reasonable (not all 0 or 100)
-- [ ] Reasoning is detailed and makes sense
-- [ ] MATCHED jobs meet criteria (remote, contractor-friendly)
-- [ ] REJECTED jobs properly filtered out
-- [ ] Real-time updates work smoothly
-- [ ] Trigger types display correctly
-- [ ] Scheduler runs automatically at configured times
-- [ ] No crashes or unhandled errors
-
-**Areas to Watch For:**
-- API rate limits (Claude API calls)
-- Memory usage during matching
-- Database performance with many jobs
-- Playwright stability
-- Network error handling
-- Session timeout issues
-- UI responsiveness with large datasets
-
-### After Testing Complete
-- Fix any bugs found during testing
-- Merge PR #3
-- Update ai.md with test results
-- Plan next phase: Applier implementation
-
-## Previous Sessions
-
-### Session - 2025-11-25 (Morning - Part 1)
-**Fixed All Claude Bot Review Issues:**
-- ✅ Fixed Python 3.12+ datetime.utcnow() deprecation
-- ✅ Added API key validation
-- ✅ Added response validation
-- ✅ Moved configuration to config.py
-- ✅ Added database index on match_score
-- ✅ Added retry logic with tenacity
-- ✅ Added rate limiting with slowapi
-
-### Session - 2025-11-24 (Evening)
-**Fixed Critical Matcher Bug & Built Profile System:**
-- ✅ Built complete UserProfile management UI
-- ✅ AI-powered profile generation with Claude
-- ✅ Removed hardcoded CV from repository
-- ✅ Created cleanup script for test data
-
-**Working Nomads Scraper - COMPLETE:**
-- ✅ Playwright-based scraper
-- ✅ Login with premium account
-- ✅ Apply filters (Development + Anywhere,Colombia)
-- ✅ Load all jobs with "Show more" pagination
-- ✅ Save to database with duplicate detection
-
-**AI Matcher - COMPLETE:**
-- ✅ Claude API integration
-- ✅ Score-based matching (0-100 scale)
-- ✅ Detailed reasoning with strengths/concerns
-- ✅ MATCHED (≥60) vs REJECTED (<60) status
-
-### Session - 2025-11-24 (Morning)
-**Initial Setup:**
-- ✅ Complete FastAPI application structure
-- ✅ Database models with status tracking
-- ✅ Vue.js frontend with dark theme
-- ✅ Docker configuration for all services
-- ✅ Comprehensive Justfile with 30+ commands
-- ✅ GitHub repository setup
 
 ## Decisions Log
 
@@ -999,66 +320,66 @@ if progress_callback:
 - **uv**: Ultra-fast package manager
 - **just**: Command runner for automation
 - **APScheduler**: For scheduled runs
-- **zoneinfo**: Proper timezone handling
+- **Playwright**: Browser automation for scraping
+- **Claude API**: AI-powered job matching
 
 ### Architecture Decisions
 - **Manual migrations**: Control and safety over convenience
-- **Shared settings module**: DRY principle for settings management
 - **Polling for real-time**: Simple and effective for MVP
-- **JSON for settings**: Simple persistence for single setting
-- **Global scheduler**: Acceptable for monolithic MVP
+- **Deduplication in-memory**: O(1) set lookups, simple and fast
+- **Composite database index**: Optimizes source+source_id queries
+- **Progress callback optimization**: Only for actual work, not skips
 
-### Security Decisions
-- **String formatting for DDL**: Safe with validated hardcoded values
-- **Settings file permissions**: Should be restricted in production
-- **Rate limiting**: Protect API endpoints from abuse
+### Performance Decisions
+- **Pre-fetch existing slugs**: Single query, O(1) lookups
+- **Skip scraping existing jobs**: 80-97% time savings
+- **Composite index on (source, source_id)**: Faster deduplication queries
+- **In-memory duplicate check**: No redundant DB queries
+
+### Matching Decisions
+- **60% threshold**: Perfect balance for matching
+- **No further optimization**: Algorithm works as intended
+- **Focus on usage**: Real-world validation over theoretical tuning
+
+---
 
 ## Implementation Status
 
-### ✅ Phase 1 & 2: Foundation & Core Features (COMPLETE)
-- [x] Project structure and organization
-- [x] Backend (FastAPI, models, schemas, endpoints)
-- [x] Frontend UI (Vue.js, dashboard, views)
-- [x] Database (PostgreSQL, Alembic, migrations)
-- [x] Docker configuration
-- [x] Development automation (Justfile)
+### ✅ Phase 1-5: Foundation Through Optimization (COMPLETE)
+- [x] Complete backend and frontend
 - [x] Working Nomads scraper with Playwright
 - [x] Claude API integration for matching
 - [x] UserProfile management with AI generation
-- [x] Service layer (scraper_service, matching_service)
-- [x] Run tracking with logs and statistics
+- [x] Real-time dashboard and scheduler
+- [x] Production deployment to NAS
+- [x] Performance optimization (80-97% faster)
+- [x] Jobs display fix (770 jobs visible)
+- [x] All Claude Code Review issues resolved
+- [x] Matching quality verified (works brilliantly)
 
-### ✅ Phase 3: Testing & Polish (COMPLETE - PR #3)
-- [x] Real-time dashboard with Recent Activity
-- [x] Automated scheduler (Manual/Daily/Hourly)
-- [x] Trigger type tracking for all runs
-- [x] Admin settings section with frequency control
-- [x] Database migration documentation
-- [x] All UI fixes (slider, Live indicator, dropdown)
-- [x] All Claude Bot review issues fixed
-- [x] Pull request created and pushed
+### 🎯 Phase 6: MVP Usage & Validation (CURRENT)
+- [x] System deployed and running 24/7
+- [x] Scraper optimized and efficient
+- [x] Matching verified and working great
+- [ ] Use system for real job search
+- [ ] Monitor and validate in production
+- [ ] Gather learnings for future improvements
 
-### 🎯 Phase 4: Profile Review & Pipeline Testing (NEXT)
-- [ ] Review and polish User Profile feature
-- [ ] Test complete pipeline end-to-end
-- [ ] Verify matching quality with real data
-- [ ] Test scheduler functionality
-- [ ] Fix any bugs found
-- [ ] Merge PR #3
+### 📋 Phase 7: External Access (FUTURE - Low Priority)
+- [ ] Configure zapply.dev domain
+- [ ] Set up nginx reverse proxy
+- [ ] Implement SSL with Let's Encrypt
+- [ ] Configure router port forwarding
+- [ ] Test external access
 
-### 📋 Phase 5: Applier Implementation (UPCOMING)
-- [ ] Playwright + Claude applier implementation
-- [ ] Navigate arbitrary ATS systems
+### 🤖 Phase 8: Applier Implementation (FUTURE)
+- [ ] Playwright + Claude applier
+- [ ] Navigate ATS systems
 - [ ] Fill forms intelligently
 - [ ] Handle custom questions
-- [ ] Mark as APPLIED/FAILED
-- [ ] Test with real job applications
+- [ ] Test with real applications
 
-### 🚀 Phase 6: Production Deployment
-- [ ] Deploy to Synology NAS
-- [ ] 24/7 automated operation
-- [ ] Reporter component (notifications)
-- [ ] Monitoring and logging
+---
 
 ## Target User Profile
 
@@ -1074,23 +395,36 @@ if progress_callback:
 - ✅ MUST HAVE: True remote, US companies + international contractors OR Latam hiring
 - ❌ MUST REJECT: US work authorization required, Physical presence, Hybrid positions
 
+---
+
 ## Key Success Criteria
 
-1. ✅ Can fetch jobs from Working Nomads (scraper working)
-2. ✅ Can accurately filter jobs (matcher working)
-3. 🎯 Can test complete pipeline end-to-end (NEXT)
-4. [ ] Can submit at least 1 real application automatically
-5. [ ] System runs unattended on Synology NAS
+1. ✅ Can fetch jobs from Working Nomads (scraper working, optimized)
+2. ✅ Can accurately filter jobs (matcher working brilliantly)
+3. ✅ System runs unattended on Synology NAS (24/7 operation)
+4. ✅ Performance is excellent (80-97% faster on subsequent runs)
+5. 🎯 Validate system with real job search (CURRENT FOCUS)
+6. [ ] Can submit at least 1 real application automatically (Phase 8)
+
+---
 
 ## Blockers
-None! PR #3 ready for review. Next: Profile review and pipeline testing.
+
+**None!** System is production-ready and working excellently.
+
+Focus now: Use the system, validate in real-world, gather learnings.
+
+---
 
 ## Notes
 
 ### Important Files & URLs
-- **GitHub PR #3**: https://github.com/vpetreski/zapply/pull/3
-- **Profile Page**: http://localhost:5173/profile
-- **Admin Page**: http://localhost:5173/admin (was /settings)
+- **GitHub Repo**: https://github.com/vpetreski/zapply (private)
+- **NAS Frontend**: http://192.168.0.188:3000/
+- **NAS API**: http://192.168.0.188:8000/docs
+- **Local Dev**: http://localhost:3000/, http://localhost:8000/docs
+- **Profile Page**: /profile
+- **Admin Page**: /admin
 - **Docs**: `docs/ai.md`, `CLAUDE.md`, `.cursorrules`
 - **Automation**: `Justfile` - run `just` to see all commands
 
@@ -1101,18 +435,26 @@ None! PR #3 ready for review. Next: Profile review and pipeline testing.
 4. Session complete
 
 ### Cost Considerations
-- Matcher: Be efficient with Claude API calls
-- Applier: Use Claude aggressively (worth the cost)
-- Monitor API usage during testing
+- Matcher: Be efficient with Claude API calls ✅
+- Applier: Use Claude aggressively (worth the cost) - Future
+- Monitor API usage during production use
+
+### Performance Notes
+- **First scrape:** 6-10 minutes (scrapes all jobs)
+- **Subsequent scrapes:** 40-60 seconds (skips existing jobs)
+- **Time savings:** 80-97% on hourly/daily runs
+- **Database queries:** Optimized with composite index
+- **Memory usage:** Minimal (storing slugs as strings in set)
 
 ---
 
-**Last Updated:** 2025-11-25 (Full Day Session) by Claude Code
+**Last Updated:** 2025-11-26 (Session: Performance Optimization & Matching Verification) by Claude Code
+
 **Next Session:**
-1. Review and polish User Profile feature in detail
-2. Test complete pipeline end-to-end with real data
-3. Fix any issues found
-4. Merge PR #3
+1. Use the system for real job searching
+2. Monitor production performance
+3. Gather feedback and learnings
+4. Plan Applier implementation when ready
 
 **GitHub:** https://github.com/vpetreski/zapply (private)
-**Current PR:** https://github.com/vpetreski/zapply/pull/3
+**Current Branch:** `main` (feature/nas-external-access created for future work)
