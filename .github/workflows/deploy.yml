@@ -81,9 +81,13 @@ jobs:
         env:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           IMAGE_TAG: latest
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🚀 Deploying to NAS (running locally on NAS via self-hosted runner)"
           cd /volume1/docker/zapply
+
+          # Login to GitHub Container Registry
+          echo "$GITHUB_TOKEN" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
           # Copy latest deployment files
           cp $GITHUB_WORKSPACE/docker-compose.prod.yml /volume1/docker/zapply/
