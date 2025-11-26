@@ -247,7 +247,7 @@ Respond in this exact JSON format:
 @router.post("/upload-cv")
 async def upload_cv(
     file: UploadFile = File(...),
-    current_user: Annotated[User, Depends(get_current_user)] = Depends(get_current_user),
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """
     Upload CV file (PDF) and extract text.
