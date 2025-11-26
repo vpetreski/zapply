@@ -45,23 +45,25 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
+# Install Playwright browsers and system dependencies as root
+# This installs browsers to /root/.cache/ms-playwright
+RUN playwright install --with-deps chromium
+
 # Copy application code
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 COPY docs ./docs
 
-# Create non-root user for security BEFORE installing Playwright
-# This ensures Playwright installs to the correct user's home directory
+# Create non-root user for security
 RUN useradd -m -u 1000 zapply && \
-    chown -R zapply:zapply /app
+    chown -R zapply:zapply /app && \
+    mkdir -p /home/zapply/.cache/ms-playwright && \
+    cp -r /root/.cache/ms-playwright/* /home/zapply/.cache/ms-playwright/ && \
+    chown -R zapply:zapply /home/zapply/.cache/ms-playwright
 
-# Switch to zapply user and install Playwright browsers
+# Switch to zapply user for runtime
 USER zapply
-
-# Install Playwright browsers and dependencies as the zapply user
-# This installs to /home/zapply/.cache/ms-playwright which the app can access
-RUN playwright install --with-deps chromium
 
 # Expose port
 EXPOSE 8000
