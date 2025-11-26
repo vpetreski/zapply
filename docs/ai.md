@@ -1,11 +1,200 @@
 # Zapply - AI Context
 
 ## Current Phase
-**Phase 4: Production Deployment - COMPLETE ✅**
+**Phase 5: Matching Quality Analysis & Polishing** 🔍
 
-Fully automated CI/CD deployment pipeline working with GitHub Actions. Production system deployed and operational on Synology NAS.
+Production system fully operational with 770 jobs scraped. Ready to analyze matching quality and polish the algorithm.
 
-## Last Session - 2025-11-26 (Early Morning - Production Password Fix)
+**Current Branch:** `feature/matching-quality-analysis`
+
+## Last Session - 2025-11-26 (Jobs Display Fix + API Slash Handling)
+
+### Accomplished This Session
+
+**1. CRITICAL: Fixed Jobs Display Issue** 📋 → ✅
+
+#### Problem: 770 Jobs in Database But Not Showing in UI
+**Investigation Process:**
+- User reported: "Matching more than 700 jobs completed on NAS I see run but on jobs there is nothing"
+- Database check confirmed: **770 jobs successfully scraped and stored** ✅
+- Frontend showing: **0 jobs** ❌
+
+**Root Cause Discovery:**
+- Used SSH + sshpass to access NAS logs and database
+- Database query: `SELECT COUNT(*) FROM jobs;` → **770 rows** ✅
+- Backend logs showed: `GET /api/jobs?limit=1000 HTTP/1.1" 307 Temporary Redirect`
+- **Issue:** FastAPI redirecting `/api/jobs` to `/api/jobs/` (with trailing slash)
+- Frontend not following 307 redirect → empty response
+
+**Solution Implemented:**
+1. **Backend Fix (Proper Solution):**
+   - Added `redirect_slashes=False` to FastAPI app initialization (main.py:87)
+   - Added dual route decorators to support both forms:
+     - `app/routers/jobs.py:18-19` - `@router.get("")` + `@router.get("/")`
+     - `app/routers/stats.py:17-18` - `@router.get("")` + `@router.get("/")`
+   - Now handles both `/api/jobs` and `/api/jobs/` without redirecting
+
+2. **Frontend:**
+   - Uses `/api/jobs` (without trailing slash) - natural and clean
+   - Works perfectly with backend handling both forms
+
+**Commits:**
+- `00cddfc` - Initial fix (added trailing slash to frontend)
+- `0922ac3` - Comprehensive fix (backend handling + reverted frontend)
+
+**Result:** ✅ All 770 jobs now visible in UI!
+
+---
+
+**2. Previous Session: Playwright Browser Fix** 🐳 → ✅
+
+#### Problem: Scraper Completing in 1 Second with 0 Jobs
+**Symptoms:**
+- ❌ Scraper running in production but returning 0 jobs immediately (1-3 seconds)
+- ❌ Works perfectly locally with same credentials
+- ❌ No obvious error in frontend logs
+- ❌ Browser launching but not actually scraping
+
+**Root Cause Investigation:**
+- Checked backend logs via SSH to NAS
+- Found actual error in container logs:
+  ```
+  playwright._impl._errors.Error: BrowserType.launch: Executable doesn't exist at
+  /home/zapply/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell
+  ```
+- Browsers installed in `/root/.cache/ms-playwright` (as root user)
+- But app runs as `zapply` user (for security)
+- App looking for browsers in `/home/zapply/.cache/ms-playwright`
+- **Permission mismatch!**
+
+#### First Attempt: Install as zapply User (FAILED)
+**Approach:**
+- Create `zapply` user first in Dockerfile
+- Switch to `zapply` user
+- Run `playwright install --with-deps chromium` as zapply
+
+**Result:** ❌ FAILED with authentication error
+```
+su: Authentication failure
+Failed to install browsers
+Error: Installation process exited with code: 1
+```
+
+**Why It Failed:**
+- Playwright's `--with-deps` flag needs to install system packages via `apt`
+- This requires root/sudo access
+- `zapply` user has no sudo access in Docker
+- Can't install system dependencies as non-root user
+
+#### Final Solution: Install as Root, Copy to zapply User ✅
+
+**Dockerfile.prod changes (lines 48-66):**
+```dockerfile
+# Install Playwright browsers and system dependencies as root
+# This installs browsers to /root/.cache/ms-playwright
+RUN playwright install --with-deps chromium
+
+# Copy application code
+COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY docs ./docs
+
+# Create non-root user for security
+RUN useradd -m -u 1000 zapply && \
+    chown -R zapply:zapply /app && \
+    mkdir -p /home/zapply/.cache/ms-playwright && \
+    cp -r /root/.cache/ms-playwright/* /home/zapply/.cache/ms-playwright/ && \
+    chown -R zapply:zapply /home/zapply/.cache/ms-playwright
+
+# Switch to zapply user for runtime
+USER zapply
+```
+
+**Why This Works:**
+1. ✅ Install Playwright as root with `--with-deps` (can install system packages)
+2. ✅ Browsers installed to `/root/.cache/ms-playwright`
+3. ✅ Create `zapply` user for security
+4. ✅ Copy browsers from root's cache to zapply's home
+5. ✅ Set correct ownership so zapply can access browsers
+6. ✅ Switch to zapply user for runtime
+7. ✅ App now finds browsers at `/home/zapply/.cache/ms-playwright`
+
+#### Deployment Results
+**GitHub Actions Workflow:**
+- ✅ Build job: 3m12s (Backend + Frontend Docker images)
+- ✅ Deploy job: In progress (~6+ minutes due to large image)
+- ✅ Backend image significantly larger (~500MB+) due to Playwright browsers
+- ✅ First deployment slow (pulling large image), subsequent deploys faster (layer caching)
+
+**Verification (User Reported):**
+- ✅ **Scraper now working!** - Fetching jobs successfully from Working Nomads
+- ✅ Playwright launching browser correctly
+- ✅ Login working
+- ✅ Jobs being scraped and saved to database
+
+### Technical Details
+
+**Docker Image Size Impact:**
+- Before: ~200MB (Python + app code)
+- After: ~500MB+ (+ Playwright browsers + system dependencies)
+- Why: Chromium browser binary and dependencies are large
+- Mitigation: Docker layer caching makes subsequent builds/pulls faster
+
+**Security Considerations:**
+- App still runs as non-root `zapply` user (security best practice)
+- Only browser installation happens as root (during build)
+- Runtime has no root access
+
+**Why Playwright Needs System Dependencies:**
+- Chromium browser requires various system libraries
+- Font libraries, graphics libraries, etc.
+- Must be installed via `apt` as root
+- `--with-deps` flag handles all dependencies automatically
+
+### Files Modified
+1. **`Dockerfile.prod`** (lines 48-66)
+   - Install Playwright as root first
+   - Copy browsers to zapply user's home
+   - Set correct permissions
+   - Switch to zapply for runtime
+
+### Commits Made
+1. `949060a` - "Fix Playwright browser install for zapply user" (first attempt, failed)
+2. `92527af` - "Fix Playwright installation: install as root, copy to zapply user" (final fix)
+
+### Current Status
+- ✅ **Scraper working in production** - Fetching jobs successfully
+- ✅ **Playwright browsers accessible** - Correct permissions and paths
+- ✅ **Security maintained** - App runs as non-root user
+- ✅ **Jobs visible in UI** - All 770 jobs displaying correctly
+- ✅ **API slash handling fixed** - Both `/api/endpoint` and `/api/endpoint/` work
+
+### Next Steps
+**Branch:** `feature/matching-quality-analysis`
+
+1. **Analyze matching quality** - Review 770 jobs to assess match scores and reasoning
+2. **Identify patterns** - Find false positives/negatives in matching
+3. **Refine matching prompt** - Improve Claude prompt based on findings
+4. **Test improvements** - Validate changes with real job data
+5. **Document learnings** - Capture insights for future iterations
+
+---
+
+## Previous Sessions
+
+### Session - 2025-11-26 (Late Night - Playwright Browser Fix)
+
+**Problem:** Scraper completing in 1 second with 0 jobs
+**Root Cause:** Playwright browsers installed as root, but app runs as zapply user
+**Solution:** Install as root, copy to zapply user directory
+**Result:** ✅ Scraper working, 770 jobs fetched
+
+---
+
+---
+
+## Previous Session - 2025-11-26 (Early Morning - Production Password Fix)
 
 ### Accomplished This Session
 
