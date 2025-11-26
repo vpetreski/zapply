@@ -91,6 +91,20 @@ async def scrape_and_save_jobs(
         add_log(run, "Initialized Working Nomads scraper", "info")
         await db.commit()
 
+        # Fetch existing job slugs from database for deduplication
+        log_to_console("📥 Fetching existing job slugs from database...")
+        add_log(run, "Fetching existing job slugs from database...", "info")
+        await db.commit()
+
+        existing_slugs_result = await db.execute(
+            select(Job.source_id).filter(Job.source == "working_nomads")
+        )
+        existing_slugs = set(row[0] for row in existing_slugs_result.fetchall())
+
+        log_to_console(f"✅ Found {len(existing_slugs)} existing job slugs in database")
+        add_log(run, f"Found {len(existing_slugs)} existing job slugs in database", "info")
+        await db.commit()
+
         # Scrape jobs
         log_to_console("🎯 Starting job scraping...")
         add_log(run, "Beginning job scraping process", "info")
@@ -105,7 +119,11 @@ async def scrape_and_save_jobs(
             add_log(run, message, level)
             await db.commit()
 
-        jobs_data = await scraper.scrape(progress_callback=progress_callback, job_limit=job_limit)
+        jobs_data = await scraper.scrape(
+            progress_callback=progress_callback,
+            job_limit=job_limit,
+            existing_slugs=existing_slugs
+        )
         stats["total"] = len(jobs_data)
 
         add_log(run, f"Scraped {len(jobs_data)} jobs from Working Nomads", "success")

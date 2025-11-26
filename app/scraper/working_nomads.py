@@ -282,17 +282,21 @@ class WorkingNomadsScraper(BaseScraper):
             log_to_console(f"❌ Failed to scrape job {slug}: {str(e)}")
             return None
 
-    async def scrape(self, since_days: int = 1, progress_callback=None, job_limit: int = 0) -> list[dict[str, Any]]:
+    async def scrape(self, since_days: int = 1, progress_callback=None, job_limit: int = 0, existing_slugs: set[str] | None = None) -> list[dict[str, Any]]:
         """
         Scrape jobs from Working Nomads.
 
         Args:
             since_days: Not used for initial implementation (we scrape all filtered jobs)
             progress_callback: Optional async callback function for progress updates
+            job_limit: Maximum number of jobs to load from the listing page (0 = unlimited)
+            existing_slugs: Set of job slugs that already exist in the database (for deduplication)
 
         Returns:
             List of normalized job dictionaries
         """
+        if existing_slugs is None:
+            existing_slugs = set()
         jobs = []
         playwright = None
 
@@ -325,23 +329,41 @@ class WorkingNomadsScraper(BaseScraper):
             await self._load_all_jobs(job_limit=job_limit)
 
             # Extract job slugs
-            slugs = await self._extract_job_slugs()
+            all_slugs = await self._extract_job_slugs()
 
             # Apply limit (in case we loaded slightly more than needed)
-            if job_limit > 0 and len(slugs) > job_limit:
-                slugs = slugs[:job_limit]
+            if job_limit > 0 and len(all_slugs) > job_limit:
+                all_slugs = all_slugs[:job_limit]
+
+            # Filter out existing slugs (optimization)
+            new_slugs = [slug for slug in all_slugs if slug not in existing_slugs]
+            skipped_count = len(all_slugs) - len(new_slugs)
+
+            log_to_console(f"\n📊 Job Summary:")
+            log_to_console(f"  Total jobs found: {len(all_slugs)}")
+            log_to_console(f"  ✅ New jobs to scrape: {len(new_slugs)}")
+            log_to_console(f"  ⏭️  Already in database: {skipped_count}")
 
             if progress_callback:
-                await progress_callback(f"Found {len(slugs)} jobs to scrape", "success")
+                await progress_callback(f"Found {len(all_slugs)} jobs: {len(new_slugs)} new, {skipped_count} already exist", "success")
 
-            # Scrape each job
-            log_to_console(f"\n📝 Scraping {len(slugs)} jobs...")
-            for i, slug in enumerate(slugs, 1):
-                log_to_console(f"  [{i}/{len(slugs)}] {slug}")
+            # Scrape only NEW jobs
+            log_to_console(f"\n📝 Scraping {len(new_slugs)} new jobs (skipping {skipped_count} existing)...")
 
-                # Log every job for real-time UI updates
+            scraped_count = 0
+            for i, slug in enumerate(all_slugs, 1):
+                # Check if this job already exists
+                if slug in existing_slugs:
+                    log_to_console(f"  [{i}/{len(all_slugs)}] ⏭️  SKIP: {slug} (already in database)")
+                    if progress_callback:
+                        await progress_callback(f"Skipping job {i}/{len(all_slugs)}: {slug} (already exists)", "info")
+                    continue
+
+                # Scrape new job
+                scraped_count += 1
+                log_to_console(f"  [{i}/{len(all_slugs)}] 📝 SCRAPING: {slug}")
                 if progress_callback:
-                    await progress_callback(f"Scraping job {i}/{len(slugs)}...", "info")
+                    await progress_callback(f"Scraping job {i}/{len(all_slugs)}: {slug} (new)", "info")
 
                 job_data = await self._scrape_job_details(slug)
                 if job_data:
@@ -349,7 +371,7 @@ class WorkingNomadsScraper(BaseScraper):
                     jobs.append(normalized_job)
 
                 # Small delay to be polite
-                if i % 10 == 0:
+                if scraped_count % 10 == 0:
                     await self.page.wait_for_timeout(1000)
 
             log_to_console(f"\n✅ Successfully scraped {len(jobs)} jobs!")
