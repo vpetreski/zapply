@@ -12,6 +12,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai_models import PROFILE_GENERATION_MODEL
 from app.config import settings
 from app.database import get_db
 from app.models import UserProfile
@@ -197,7 +198,7 @@ Respond in this exact JSON format:
         # Call Claude API
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         message = client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model=PROFILE_GENERATION_MODEL,
             max_tokens=4000,
             temperature=0.3,
             messages=[{

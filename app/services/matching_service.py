@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from app.ai_models import MATCHING_MODEL
 from app.config import settings
 from app.models import Job, JobStatus, Run, UserProfile
 
@@ -104,7 +105,7 @@ Respond in this exact JSON format:
     try:
         # Call Claude API (async)
         message = await client.messages.create(
-            model=settings.anthropic_model,
+            model=MATCHING_MODEL,
             max_tokens=2000,
             # Use lower temperature (0.3) for more consistent scoring across jobs
             # Higher temp would vary scores too much for similar jobs
@@ -241,7 +242,7 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
         logger.info(f"🔑 API Key validated (length: {len(settings.anthropic_api_key)} characters)")
 
         # Initialize async Claude client
-        logger.info(f"🤖 Initializing Claude AI client (model: {settings.anthropic_model})...")
+        logger.info(f"🤖 Initializing Claude AI client (model: {MATCHING_MODEL})...")
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         add_log(run, "Initialized Claude AI client (async)", "info")
         await db.commit()

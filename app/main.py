@@ -47,7 +47,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("✓ Anthropic API key configured")
         logger.info(f"✓ API key length: {len(settings.anthropic_api_key)} characters")
-        logger.info(f"✓ Anthropic model: {settings.anthropic_model}")
 
     # Start scheduler
     try:
