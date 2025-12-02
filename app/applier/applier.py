@@ -299,14 +299,9 @@ class JobApplier:
                 log_to_console(f"   ↪️  Redirected to: {final_url}")
 
             # Check for Working Nomads expired job patterns:
-            # ONLY mark as expired if we're STILL on workingnomads.com but NOT on /job/go/ anymore
-            # This means the job redirect failed and we got sent to a listing page
+            # Pattern 1: Redirected away from /job/go/ to a listing page
             if "workingnomads.com" in final_url and "/job/go/" not in final_url:
-                # We started with /job/go/ but ended up somewhere else on workingnomads
-                # This is a clear sign the job no longer exists
                 log_to_console(f"   ❌ Job expired - Working Nomads redirected to listing instead of job")
-                log_to_console(f"      Original: {url}")
-                log_to_console(f"      Final: {final_url}")
                 self.steps.append({
                     "action": "navigate",
                     "url": url,
@@ -315,6 +310,26 @@ class JobApplier:
                     "error": "Job expired - Working Nomads redirect failed (job no longer exists)"
                 })
                 return False
+
+            # Pattern 2: Still on /job/go/ but page has no content (dead link)
+            if "workingnomads.com/job/go/" in final_url:
+                page_title = await self.page.title()
+                body = await self.page.query_selector("body")
+                body_text = await body.text_content() if body else ""
+                content_length = len(body_text.strip()) if body_text else 0
+
+                # If page has no title or very little content, it's a dead link
+                if not page_title or content_length < 500:
+                    log_to_console(f"   ❌ Job expired - Working Nomads link dead (no redirect, empty page)")
+                    log_to_console(f"      Title: '{page_title}', Content length: {content_length}")
+                    self.steps.append({
+                        "action": "navigate",
+                        "url": url,
+                        "final_url": final_url,
+                        "success": False,
+                        "error": "Job expired - Working Nomads link dead (no redirect occurred)"
+                    })
+                    return False
 
             # Check if page has meaningful content
             body = await self.page.query_selector("body")
