@@ -206,86 +206,28 @@
         ></textarea>
       </section>
 
-      <!-- Step 4: Analyze & Update Profile -->
+      <!-- Step 4: Save All Changes -->
       <section class="profile-section">
-        <h3>Step 4: Analyze CV & Update Profile</h3>
+        <h3>Step 4: Save All Changes</h3>
         <p class="help-text">
-          Claude will read your CV fresh from disk, extract text, and analyze it with your custom instructions to update your profile.
+          This will upload your CV, analyze it with Claude AI, and save everything (basic info + AI-generated content).
         </p>
-        <button
-          @click="generateProfile"
-          class="btn-primary btn-large"
-          :disabled="generating || !canGenerate"
-        >
-          {{ generating ? '🤖 Analyzing with Claude AI...' : '🔍 Analyze CV & Update Profile' }}
-        </button>
+        <div class="action-buttons">
+          <button
+            @click="saveAllChanges"
+            class="btn-primary btn-large"
+            :disabled="saving || !canGenerate"
+          >
+            {{ saving ? '🤖 Saving...' : '💾 Save All Changes' }}
+          </button>
+          <button @click="cancelEdit" class="btn-secondary">
+            Cancel
+          </button>
+        </div>
         <div v-if="!canGenerate" class="validation-message">
           Please fill in all required fields (Name, Email, Location, Rate, CV, Custom Instructions)
         </div>
       </section>
-
-      <!-- Generated Profile Preview -->
-      <section v-if="generatedProfile" class="profile-section generated-preview">
-        <h3>✨ Generated Profile Preview</h3>
-
-        <div class="generation-summary">
-          <strong>Summary:</strong> {{ generatedProfile.generated_summary }}
-        </div>
-
-        <div class="preview-section">
-          <h4>Skills ({{ generatedProfile.skills.length }})</h4>
-          <div class="skills-container">
-            <span v-for="skill in generatedProfile.skills" :key="skill" class="skill-badge">
-              {{ skill }}
-            </span>
-          </div>
-        </div>
-
-        <div class="preview-section">
-          <h4>Preferences</h4>
-          <pre class="json-display">{{ JSON.stringify(generatedProfile.preferences, null, 2) }}</pre>
-        </div>
-
-        <div class="preview-section">
-          <h4>Profile Text</h4>
-          <div class="cv-text">{{ generatedProfile.cv_text }}</div>
-        </div>
-
-        <div class="save-section">
-          <button @click="saveProfile" class="btn-primary btn-large" :disabled="saving">
-            {{ saving ? '💾 Saving...' : '💾 Save Profile' }}
-          </button>
-          <button @click="cancelEdit" class="btn-secondary">
-            Cancel
-          </button>
-        </div>
-      </section>
-
-      <!-- Save Basic Info (without regenerating) -->
-      <section v-if="profile && !generatedProfile" class="profile-section save-basic-section">
-        <h3>Save Changes</h3>
-        <p class="help-text">
-          Save all changes to your profile. If you want to regenerate AI content, select CV and use the "Analyze CV" button above first.
-        </p>
-        <div class="action-buttons">
-          <button @click="saveBasicInfo" class="btn-primary" :disabled="saving || !canSaveBasicInfo">
-            {{ saving ? '💾 Saving...' : '💾 Save All Changes' }}
-          </button>
-          <button @click="cancelEdit" class="btn-secondary">
-            Cancel
-          </button>
-        </div>
-        <div v-if="!canSaveBasicInfo" class="validation-message">
-          Please fill in all required fields (Name, Email, Location, Rate)
-        </div>
-      </section>
-
-      <!-- Cancel if no profile yet and not generated -->
-      <div v-else-if="!profile && !generatedProfile" class="action-buttons">
-        <button @click="cancelEdit" class="btn-secondary">
-          Cancel
-        </button>
-      </div>
 
       <!-- Error Message -->
       <div v-if="error" class="error-message">
@@ -341,7 +283,6 @@ interface GeneratedProfile {
 
 const route = useRoute()
 const loading = ref(false)
-const generating = ref(false)
 const saving = ref(false)
 const profile = ref<Profile | null>(null)
 const editMode = ref(false)
@@ -375,14 +316,6 @@ const canGenerate = computed(() => {
          formData.value.rate &&
          uploadedFile.value &&
          formData.value.customInstructions
-})
-
-const canSaveBasicInfo = computed(() => {
-  // For saving basic info, we only need the required fields
-  return formData.value.name &&
-         formData.value.email &&
-         formData.value.location &&
-         formData.value.rate
 })
 
 async function loadProfile() {
@@ -462,14 +395,14 @@ function handleFileUpload(event: Event) {
   target.value = ''
 }
 
-async function generateProfile() {
+async function saveAllChanges() {
   if (!canGenerate.value || !uploadedFile.value) return
 
-  generating.value = true
+  saving.value = true
   error.value = ''
 
   try {
-    // Step 1: ALWAYS upload the CV file to get fresh content from disk
+    // Step 1: Upload the CV file to get fresh content from disk
     const formDataUpload = new FormData()
     formDataUpload.append('file', uploadedFile.value)
 
@@ -482,8 +415,8 @@ async function generateProfile() {
     formData.value.cvFileData = uploadResponse.data.file_data
     formData.value.cvFilename = uploadResponse.data.filename
 
-    // Step 2: Generate profile with fresh CV text
-    const response = await axios.post('/api/profile/generate', {
+    // Step 2: Generate profile with Claude AI
+    const generateResponse = await axios.post('/api/profile/generate', {
       cv_text: formData.value.cvText,
       custom_instructions: formData.value.customInstructions,
       name: formData.value.name,
@@ -495,21 +428,9 @@ async function generateProfile() {
       github: formData.value.github || null
     })
 
-    generatedProfile.value = response.data
-  } catch (err: any) {
-    error.value = `Failed to generate profile: ${err.response?.data?.detail || err.message}`
-  } finally {
-    generating.value = false
-  }
-}
+    const generated = generateResponse.data
 
-async function saveProfile() {
-  if (!generatedProfile.value) return
-
-  saving.value = true
-  error.value = ''
-
-  try {
+    // Step 3: Save everything to the database
     await axios.put('/api/profile', {
       name: formData.value.name,
       email: formData.value.email,
@@ -520,48 +441,11 @@ async function saveProfile() {
       github: formData.value.github || null,
       cv_filename: formData.value.cvFilename || null,
       cv_data_base64: formData.value.cvFileData || null,
-      cv_text: generatedProfile.value.cv_text,
+      cv_text: generated.cv_text,
       custom_instructions: formData.value.customInstructions,
-      skills: generatedProfile.value.skills,
-      preferences: generatedProfile.value.preferences,
-      ai_generated_summary: generatedProfile.value.generated_summary
-    })
-
-    // Reload profile and exit edit mode
-    await loadProfile()
-    editMode.value = false
-    generatedProfile.value = null
-    uploadedFile.value = null
-  } catch (err: any) {
-    error.value = `Failed to save profile: ${err.response?.data?.detail || err.message}`
-  } finally {
-    saving.value = false
-  }
-}
-
-async function saveBasicInfo() {
-  if (!profile.value) return
-
-  saving.value = true
-  error.value = ''
-
-  try {
-    // Save only basic info changes, keeping existing AI-generated content
-    await axios.put('/api/profile', {
-      name: formData.value.name,
-      email: formData.value.email,
-      phone: formData.value.phone || null,
-      location: formData.value.location,
-      rate: formData.value.rate,
-      linkedin: formData.value.linkedin || null,
-      github: formData.value.github || null,
-      cv_filename: profile.value.cv_filename || null,
-      cv_data_base64: null, // Don't change CV data
-      cv_text: profile.value.cv_text || '',
-      custom_instructions: formData.value.customInstructions || profile.value.custom_instructions,
-      skills: profile.value.skills || [],
-      preferences: profile.value.preferences || {},
-      ai_generated_summary: profile.value.ai_generated_summary || null
+      skills: generated.skills,
+      preferences: generated.preferences,
+      ai_generated_summary: generated.generated_summary
     })
 
     // Reload profile and exit edit mode
