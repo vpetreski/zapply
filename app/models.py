@@ -99,6 +99,8 @@ class UserProfile(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(50))
     location: Mapped[str] = mapped_column(String(200))
     rate: Mapped[str] = mapped_column(String(100))
+    linkedin: Mapped[Optional[str]] = mapped_column(String(500))
+    github: Mapped[Optional[str]] = mapped_column(String(500))
 
     # CV file storage (PDF stored as binary data)
     cv_filename: Mapped[Optional[str]] = mapped_column(String(500))

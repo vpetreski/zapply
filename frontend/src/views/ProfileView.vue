@@ -54,6 +54,20 @@
             <span class="info-value">{{ profile.rate }}</span>
           </div>
           <div class="info-item">
+            <span class="info-label">LinkedIn:</span>
+            <span class="info-value">
+              <a v-if="profile.linkedin" :href="profile.linkedin" target="_blank" class="profile-link">{{ profile.linkedin }}</a>
+              <span v-else>Not provided</span>
+            </span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">GitHub:</span>
+            <span class="info-value">
+              <a v-if="profile.github" :href="profile.github" target="_blank" class="profile-link">{{ profile.github }}</a>
+              <span v-else>Not provided</span>
+            </span>
+          </div>
+          <div class="info-item">
             <span class="info-label">CV File:</span>
             <span class="info-value">{{ profile.cv_filename || 'Not uploaded' }}</span>
           </div>
@@ -135,18 +149,29 @@
             <label>Rate *</label>
             <input v-model="formData.rate" type="text" placeholder="e.g. $10,000/month" required />
           </div>
+          <div class="form-field">
+            <label>LinkedIn</label>
+            <input v-model="formData.linkedin" type="url" placeholder="https://linkedin.com/in/yourprofile" />
+          </div>
+          <div class="form-field">
+            <label>GitHub</label>
+            <input v-model="formData.github" type="url" placeholder="https://github.com/yourusername" />
+          </div>
         </div>
       </section>
 
-      <!-- Step 2: Upload CV PDF -->
+      <!-- Step 2: Select CV PDF -->
       <section class="profile-section">
-        <h3>Step 2: Upload Your CV (PDF)</h3>
+        <h3>Step 2: Select Your CV (PDF)</h3>
         <p class="help-text">
-          Upload your CV as a PDF file. The text will be extracted and used for AI profile generation.
+          Select your CV PDF file. The file will be read fresh from disk when you click "Analyze CV & Update Profile".
+          <strong v-if="profile?.cv_filename && !uploadedFile" class="cv-reminder">
+            You must select your CV file to continue (even if updating the same file).
+          </strong>
         </p>
         <div class="upload-section">
           <button @click="$refs.fileInput.click()" class="btn-secondary">
-            📎 {{ uploadedFile ? 'Change PDF File' : 'Choose PDF File' }}
+            📎 {{ uploadedFile ? 'Change PDF File' : 'Select PDF File' }}
           </button>
           <input
             type="file"
@@ -158,9 +183,10 @@
           <span v-if="uploadedFile" class="file-info">
             <span class="file-name">{{ uploadedFile.name }}</span>
             <span class="file-size">({{ formatFileSize(uploadedFile.size) }})</span>
+            <span class="file-ready">✓ Ready</span>
           </span>
-          <span v-else-if="profile?.cv_filename" class="file-name">
-            Current: {{ profile.cv_filename }}
+          <span v-else-if="profile?.cv_filename" class="file-name file-not-selected">
+            Previously: {{ profile.cv_filename }} (not selected)
           </span>
         </div>
         <div v-if="uploadError" class="error-inline">{{ uploadError }}</div>
@@ -180,18 +206,18 @@
         ></textarea>
       </section>
 
-      <!-- Step 4: Generate Profile -->
+      <!-- Step 4: Analyze & Update Profile -->
       <section class="profile-section">
-        <h3>Step 4: Generate Profile with AI</h3>
+        <h3>Step 4: Analyze CV & Update Profile</h3>
         <p class="help-text">
-          Claude will analyze your CV and custom instructions to create an optimized profile for job matching.
+          Claude will read your CV fresh from disk, extract text, and analyze it with your custom instructions to update your profile.
         </p>
         <button
           @click="generateProfile"
           class="btn-primary btn-large"
           :disabled="generating || !canGenerate"
         >
-          {{ generating ? '🤖 Generating with Claude AI...' : '✨ Generate Profile' }}
+          {{ generating ? '🤖 Analyzing with Claude AI...' : '🔍 Analyze CV & Update Profile' }}
         </button>
         <div v-if="!canGenerate" class="validation-message">
           Please fill in all required fields (Name, Email, Location, Rate, CV, Custom Instructions)
@@ -275,6 +301,8 @@ interface Profile {
   phone: string | null
   location: string
   rate: string
+  linkedin: string | null
+  github: string | null
   cv_filename: string | null
   cv_text: string | null
   custom_instructions: string | null
@@ -308,6 +336,8 @@ const formData = ref({
   phone: '',
   location: '',
   rate: '',
+  linkedin: '',
+  github: '',
   cvText: '',
   cvFileData: '',
   cvFilename: '',
@@ -318,11 +348,13 @@ const uploadedFile = ref<File | null>(null)
 const generatedProfile = ref<GeneratedProfile | null>(null)
 
 const canGenerate = computed(() => {
+  // ALWAYS require a file to be selected - we must read fresh from disk
+  // Browser security prevents reading files without user selection
   return formData.value.name &&
          formData.value.email &&
          formData.value.location &&
          formData.value.rate &&
-         formData.value.cvText &&
+         uploadedFile.value &&
          formData.value.customInstructions
 })
 
@@ -349,6 +381,8 @@ function startCreate() {
     phone: '',
     location: '',
     rate: '',
+    linkedin: '',
+    github: '',
     cvText: '',
     cvFileData: '',
     cvFilename: '',
@@ -368,6 +402,8 @@ function startEdit() {
     phone: profile.value.phone || '',
     location: profile.value.location,
     rate: profile.value.rate,
+    linkedin: profile.value.linkedin || '',
+    github: profile.value.github || '',
     cvText: profile.value.cv_text || '',
     cvFileData: '',
     cvFilename: profile.value.cv_filename || '',
@@ -385,7 +421,7 @@ function cancelEdit() {
   uploadError.value = ''
 }
 
-async function handleFileUpload(event: Event) {
+function handleFileUpload(event: Event) {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
 
@@ -393,31 +429,33 @@ async function handleFileUpload(event: Event) {
 
   uploadError.value = ''
   uploadedFile.value = file
+  formData.value.cvFilename = file.name
 
-  try {
-    const formDataUpload = new FormData()
-    formDataUpload.append('file', file)
-
-    const response = await axios.post('/api/profile/upload-cv', formDataUpload, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-
-    formData.value.cvText = response.data.text
-    formData.value.cvFileData = response.data.file_data
-    formData.value.cvFilename = response.data.filename
-  } catch (err: any) {
-    uploadError.value = `Failed to upload CV: ${err.response?.data?.detail || err.message}`
-    uploadedFile.value = null
-  }
+  // Reset input value to allow re-selecting the same file
+  target.value = ''
 }
 
 async function generateProfile() {
-  if (!canGenerate.value) return
+  if (!canGenerate.value || !uploadedFile.value) return
 
   generating.value = true
   error.value = ''
 
   try {
+    // Step 1: ALWAYS upload the CV file to get fresh content from disk
+    const formDataUpload = new FormData()
+    formDataUpload.append('file', uploadedFile.value)
+
+    const uploadResponse = await axios.post('/api/profile/upload-cv', formDataUpload, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+
+    // Update form data with fresh CV content
+    formData.value.cvText = uploadResponse.data.text
+    formData.value.cvFileData = uploadResponse.data.file_data
+    formData.value.cvFilename = uploadResponse.data.filename
+
+    // Step 2: Generate profile with fresh CV text
     const response = await axios.post('/api/profile/generate', {
       cv_text: formData.value.cvText,
       custom_instructions: formData.value.customInstructions,
@@ -425,7 +463,9 @@ async function generateProfile() {
       email: formData.value.email,
       phone: formData.value.phone || null,
       location: formData.value.location,
-      rate: formData.value.rate
+      rate: formData.value.rate,
+      linkedin: formData.value.linkedin || null,
+      github: formData.value.github || null
     })
 
     generatedProfile.value = response.data
@@ -449,6 +489,8 @@ async function saveProfile() {
       phone: formData.value.phone || null,
       location: formData.value.location,
       rate: formData.value.rate,
+      linkedin: formData.value.linkedin || null,
+      github: formData.value.github || null,
       cv_filename: formData.value.cvFilename || null,
       cv_data_base64: formData.value.cvFileData || null,
       cv_text: generatedProfile.value.cv_text,
@@ -601,6 +643,16 @@ h1 {
 .info-value {
   font-size: 1rem;
   color: #e0e0e0;
+}
+
+.profile-link {
+  color: #4a9eff;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.profile-link:hover {
+  text-decoration: underline;
 }
 
 .instructions-text {
@@ -801,6 +853,21 @@ h1 {
 .file-size {
   color: #888;
   font-size: 0.85rem;
+}
+
+.file-ready {
+  color: #4ade80;
+  font-weight: 500;
+}
+
+.file-not-selected {
+  color: #f59e0b;
+}
+
+.cv-reminder {
+  display: block;
+  margin-top: 0.5rem;
+  color: #f59e0b;
 }
 
 .help-text {

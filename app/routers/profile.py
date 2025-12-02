@@ -32,6 +32,8 @@ class ProfileResponse(BaseModel):
     phone: Optional[str]
     location: str
     rate: str
+    linkedin: Optional[str]
+    github: Optional[str]
     cv_filename: Optional[str]
     cv_text: Optional[str]
     custom_instructions: Optional[str]
@@ -58,6 +60,8 @@ class GenerateProfileRequest(BaseModel):
     phone: Optional[str]
     location: str
     rate: str
+    linkedin: Optional[str]
+    github: Optional[str]
 
 
 class GenerateProfileResponse(BaseModel):
@@ -77,6 +81,8 @@ class UpdateProfileRequest(BaseModel):
     phone: Optional[str]
     location: str
     rate: str
+    linkedin: Optional[str]
+    github: Optional[str]
     cv_filename: Optional[str]
     cv_data_base64: Optional[str]  # Base64 encoded PDF file
     cv_text: str
@@ -125,6 +131,8 @@ async def get_profile(
         phone=profile.phone,
         location=profile.location,
         rate=profile.rate,
+        linkedin=profile.linkedin,
+        github=profile.github,
         cv_filename=profile.cv_filename,
         cv_text=profile.cv_text,
         custom_instructions=profile.custom_instructions,
@@ -321,6 +329,8 @@ async def update_profile(
         profile.phone = request.phone
         profile.location = request.location
         profile.rate = request.rate
+        profile.linkedin = request.linkedin
+        profile.github = request.github
         if request.cv_filename:
             profile.cv_filename = request.cv_filename
         if cv_data:
@@ -339,6 +349,8 @@ async def update_profile(
             phone=request.phone,
             location=request.location,
             rate=request.rate,
+            linkedin=request.linkedin,
+            github=request.github,
             cv_filename=request.cv_filename,
             cv_data=cv_data,
             cv_text=request.cv_text,
@@ -359,6 +371,8 @@ async def update_profile(
         phone=profile.phone,
         location=profile.location,
         rate=profile.rate,
+        linkedin=profile.linkedin,
+        github=profile.github,
         cv_filename=profile.cv_filename,
         cv_text=profile.cv_text,
         custom_instructions=profile.custom_instructions,
