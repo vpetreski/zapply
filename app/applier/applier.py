@@ -233,10 +233,10 @@ class JobApplier:
             elif verified is False:
                 return False, f"Application may have failed: {evidence}", self._get_result_data()
             else:
-                # STRICT VERIFICATION: If we can't confirm success, mark as failed
-                # User needs definitive proof of submission (confirmation message, thank you page, etc.)
-                # Inconclusive means we clicked submit but no proof it worked
-                return False, f"Application unverified - no confirmation found. {evidence}", self._get_result_data()
+                # OPTIMISTIC VERIFICATION: If we clicked submit without errors, assume success
+                # Many ATS systems don't show clear confirmation - form disappearance or same page is common
+                # Better to assume submitted than to incorrectly mark as failed
+                return True, f"Application submitted (no confirmation message, but no errors). {evidence}", self._get_result_data()
 
         except Exception as e:
             error_msg = f"Application failed: {str(e)}"
