@@ -121,7 +121,9 @@ async def apply_to_job(
             error_lower = (error_message or "").lower()
             is_expired = any(indicator in error_lower for indicator in [
                 "expired", "empty content", "category listing", "job listing",
-                "no longer available", "position has been filled"
+                "no longer available", "position has been filled",
+                # Timeout errors are often from dead links that hang
+                "timeout", "timed out"
             ])
 
             if is_expired:

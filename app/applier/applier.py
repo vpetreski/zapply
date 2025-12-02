@@ -952,35 +952,24 @@ IMPORTANT:
                     return True, evidence
 
             # Check for error indicators (explicit failures)
-            # Be MORE specific to avoid false positives from static form labels
-            # These patterns indicate ACTUAL errors, not just field labels
+            # Be VERY specific to avoid false positives from static form labels
+            # Only match phrases that clearly indicate SUBMISSION FAILURE
+            # NOT pre-fill validation hints or field labels
             error_patterns = [
-                # Explicit error messages (not static labels)
+                # Explicit submission error messages
                 ("an error occurred", "error occurred"),
                 ("something went wrong", "something went wrong"),
                 ("please try again later", "retry message"),
-                ("please correct the errors", "form validation errors"),
-                ("please fix the following", "validation errors"),
-                # Dynamic validation errors (field name + "is required")
-                ("first name is required", "missing first name"),
-                ("last name is required", "missing last name"),
-                ("email is required", "missing email"),
-                ("email address is required", "missing email"),
-                ("resume is required", "missing resume"),
-                ("phone is required", "missing phone"),
-                # Field state errors
-                ("can't be blank", "empty required field"),
-                ("cannot be blank", "empty required field"),
-                ("must not be empty", "empty required field"),
-                # Format errors
+                ("please correct the errors below", "form validation errors"),
+                ("please fix the following errors", "validation errors"),
+                # Format errors (these appear AFTER submit)
                 ("invalid email address", "invalid email"),
-                ("invalid email format", "invalid email"),
-                ("invalid phone number", "invalid phone"),
-                ("not a valid email", "invalid email"),
+                ("is not a valid email", "invalid email"),
                 # Submission errors
                 ("failed to submit", "submission failed"),
                 ("submission failed", "submission failed"),
-                ("could not process", "processing failed"),
+                ("could not process your application", "processing failed"),
+                ("error submitting", "submission error"),
             ]
             for pattern, description in error_patterns:
                 if pattern in content_lower:
