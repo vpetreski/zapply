@@ -261,8 +261,27 @@
         </div>
       </section>
 
-      <!-- Cancel if not generated yet -->
-      <div v-else class="action-buttons">
+      <!-- Save Basic Info (without regenerating) -->
+      <section v-if="profile && !generatedProfile" class="profile-section save-basic-section">
+        <h3>Save Changes</h3>
+        <p class="help-text">
+          Save all changes to your profile. If you want to regenerate AI content, select CV and use the "Analyze CV" button above first.
+        </p>
+        <div class="action-buttons">
+          <button @click="saveBasicInfo" class="btn-primary" :disabled="saving || !canSaveBasicInfo">
+            {{ saving ? '💾 Saving...' : '💾 Save All Changes' }}
+          </button>
+          <button @click="cancelEdit" class="btn-secondary">
+            Cancel
+          </button>
+        </div>
+        <div v-if="!canSaveBasicInfo" class="validation-message">
+          Please fill in all required fields (Name, Email, Location, Rate)
+        </div>
+      </section>
+
+      <!-- Cancel if no profile yet and not generated -->
+      <div v-else-if="!profile && !generatedProfile" class="action-buttons">
         <button @click="cancelEdit" class="btn-secondary">
           Cancel
         </button>
@@ -356,6 +375,14 @@ const canGenerate = computed(() => {
          formData.value.rate &&
          uploadedFile.value &&
          formData.value.customInstructions
+})
+
+const canSaveBasicInfo = computed(() => {
+  // For saving basic info, we only need the required fields
+  return formData.value.name &&
+         formData.value.email &&
+         formData.value.location &&
+         formData.value.rate
 })
 
 async function loadProfile() {
@@ -498,6 +525,43 @@ async function saveProfile() {
       skills: generatedProfile.value.skills,
       preferences: generatedProfile.value.preferences,
       ai_generated_summary: generatedProfile.value.generated_summary
+    })
+
+    // Reload profile and exit edit mode
+    await loadProfile()
+    editMode.value = false
+    generatedProfile.value = null
+    uploadedFile.value = null
+  } catch (err: any) {
+    error.value = `Failed to save profile: ${err.response?.data?.detail || err.message}`
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveBasicInfo() {
+  if (!profile.value) return
+
+  saving.value = true
+  error.value = ''
+
+  try {
+    // Save only basic info changes, keeping existing AI-generated content
+    await axios.put('/api/profile', {
+      name: formData.value.name,
+      email: formData.value.email,
+      phone: formData.value.phone || null,
+      location: formData.value.location,
+      rate: formData.value.rate,
+      linkedin: formData.value.linkedin || null,
+      github: formData.value.github || null,
+      cv_filename: profile.value.cv_filename || null,
+      cv_data_base64: null, // Don't change CV data
+      cv_text: profile.value.cv_text || '',
+      custom_instructions: formData.value.customInstructions || profile.value.custom_instructions,
+      skills: profile.value.skills || [],
+      preferences: profile.value.preferences || {},
+      ai_generated_summary: profile.value.ai_generated_summary || null
     })
 
     // Reload profile and exit edit mode
