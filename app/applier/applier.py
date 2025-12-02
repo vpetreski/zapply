@@ -19,6 +19,25 @@ from app.utils import log_to_console
 class JobApplier:
     """Apply to jobs automatically using Playwright + Claude AI."""
 
+    @staticmethod
+    def _fix_css_selector(selector: str) -> str:
+        """
+        Fix CSS selectors that have IDs starting with digits.
+
+        CSS IDs starting with digits are technically invalid and need special handling.
+        Converts #0abc123 to [id="0abc123"] which works for any ID value.
+        """
+        if not selector:
+            return selector
+
+        # Check if selector starts with # followed by a digit
+        if selector.startswith('#') and len(selector) > 1 and selector[1].isdigit():
+            # Convert #0abc123 to [id="0abc123"]
+            id_value = selector[1:]
+            return f'[id="{id_value}"]'
+
+        return selector
+
     def __init__(
         self,
         profile: UserProfile,
@@ -50,6 +69,7 @@ class JobApplier:
         self.ai_prompts: list[str] = []
         self.ai_responses: list[str] = []
         self.steps: list[dict[str, Any]] = []
+        self.fields_filled: list[dict[str, str]] = []  # Human-readable field/value pairs
 
     async def apply_to_job(
         self, job: Job
@@ -70,7 +90,7 @@ class JobApplier:
             playwright = await async_playwright().start()
             self.browser = await playwright.chromium.launch(
                 headless=True,
-                args=['--no-sandbox', '--disable-setuid-sandbox']
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
             )
             self.page = await self.browser.new_page()
 
@@ -92,13 +112,71 @@ class JobApplier:
             # Take initial screenshot
             await self._take_screenshot("01_job_page")
 
-            # Step 2: Find and click Apply button
-            log_to_console("🔍 Looking for Apply button...")
-            apply_clicked = await self._find_and_click_apply()
-            if not apply_clicked:
-                return False, "Could not find Apply button", self._get_result_data()
+            # Check if we're already on an application page (Greenhouse, Lever, etc.)
+            current_url = self.page.url.lower()
+            # Note: Jobvite /job/ID pages are job details, not application pages
+            # Jobvite application pages have /apply in the URL
+            is_direct_application = any(ats in current_url for ats in [
+                'greenhouse.io', 'lever.co', 'workable.com', 'ashbyhq.com',
+                '/apply', '/application'
+            ])
 
-            await self.page.wait_for_timeout(2000)  # Wait for page/modal to load
+            if is_direct_application:
+                log_to_console("   📋 Already on application page, skipping Apply button search")
+                self.steps.append({"action": "skip_apply_button", "reason": "Direct application page detected", "url": current_url})
+
+                # Special handling for Ashby: Navigate to Application tab if we're on Overview
+                if 'ashbyhq.com' in current_url and '/application' not in current_url:
+                    log_to_console("   📋 Ashby detected - navigating to Application tab...")
+                    # Try to find and click Application tab link
+                    app_tab_found = False
+                    try:
+                        # Look for Application tab link
+                        app_tab_selectors = [
+                            'a[href*="/application"]',
+                            'a:has-text("Application")',
+                            '[role="tab"]:has-text("Application")',
+                            'button:has-text("Apply for this job")',
+                        ]
+                        for selector in app_tab_selectors:
+                            tab = await self.page.query_selector(selector)
+                            if tab:
+                                await tab.click()
+                                await self.page.wait_for_timeout(2000)
+                                log_to_console(f"   ✅ Clicked Application tab: {selector}")
+                                self.steps.append({"action": "navigate_ashby_tab", "selector": selector, "success": True})
+                                app_tab_found = True
+                                break
+
+                        if not app_tab_found:
+                            # Try direct URL navigation
+                            application_url = current_url.rstrip('/') + '/application'
+                            log_to_console(f"   📍 Trying direct URL: {application_url}")
+                            await self.page.goto(application_url, wait_until="networkidle", timeout=30000)
+                            await self.page.wait_for_timeout(2000)
+                            self.steps.append({"action": "navigate_ashby_tab", "url": application_url, "success": True})
+                            app_tab_found = True
+                    except Exception as e:
+                        log_to_console(f"   ⚠️  Could not navigate to Ashby application tab: {e}")
+                        self.steps.append({"action": "navigate_ashby_tab", "success": False, "error": str(e)})
+            else:
+                # Step 2: Find and click Apply button
+                log_to_console("🔍 Looking for Apply button...")
+                apply_clicked = await self._find_and_click_apply()
+                if not apply_clicked:
+                    return False, "Could not find Apply button", self._get_result_data()
+
+                # Wait for page to fully load after clicking apply
+                await self.page.wait_for_timeout(3000)  # Initial wait
+
+            # Wait for common form elements to appear
+            try:
+                await self.page.wait_for_selector('form, input[type="text"], input[type="email"], textarea', timeout=15000)
+                log_to_console("   ✅ Form elements detected")
+            except Exception:
+                log_to_console("   ⚠️  No form elements found after waiting, continuing anyway...")
+
+            await self.page.wait_for_timeout(2000)  # Extra time for JS to fully render
             await self._take_screenshot("02_after_apply_click")
 
             # Step 3: Analyze the application form
@@ -106,6 +184,17 @@ class JobApplier:
             form_analysis = await self._analyze_form()
             if not form_analysis:
                 return False, "Could not analyze application form", self._get_result_data()
+
+            # Track form analysis in steps
+            self.steps.append({
+                "action": "analyze_form",
+                "form_found": form_analysis.get("form_found", False),
+                "fields_count": len(form_analysis.get("fields", [])),
+                "fields": [{"label": f.get("label"), "type": f.get("type")} for f in form_analysis.get("fields", [])[:10]],
+                "submit_selector": form_analysis.get("submit_selector"),
+                "notes": form_analysis.get("notes"),
+                "success": form_analysis.get("form_found", False)
+            })
 
             # Step 4: Fill the form
             log_to_console("📝 Filling application form...")
@@ -128,7 +217,7 @@ class JobApplier:
                 return True, "Dry run completed - form filled but not submitted", self._get_result_data()
 
             log_to_console("🚀 Submitting application...")
-            submit_success = await self._submit_application()
+            submit_success = await self._submit_application(form_analysis)
             if not submit_success:
                 return False, "Failed to submit application", self._get_result_data()
 
@@ -137,12 +226,17 @@ class JobApplier:
 
             # Step 7: Verify submission
             log_to_console("✔️  Verifying submission...")
-            verified = await self._verify_submission()
+            verified, evidence = await self._verify_submission()
 
-            if verified:
-                return True, "Application submitted successfully", self._get_result_data()
+            if verified is True:
+                return True, f"Application submitted successfully ({evidence})", self._get_result_data()
+            elif verified is False:
+                return False, f"Application may have failed: {evidence}", self._get_result_data()
             else:
-                return False, "Could not verify submission success", self._get_result_data()
+                # STRICT VERIFICATION: If we can't confirm success, mark as failed
+                # User needs definitive proof of submission (confirmation message, thank you page, etc.)
+                # Inconclusive means we clicked submit but no proof it worked
+                return False, f"Application unverified - no confirmation found. {evidence}", self._get_result_data()
 
         except Exception as e:
             error_msg = f"Application failed: {str(e)}"
@@ -164,7 +258,8 @@ class JobApplier:
             "screenshots": self.screenshots,
             "ai_prompts": self.ai_prompts,
             "ai_responses": self.ai_responses,
-            "steps": self.steps
+            "steps": self.steps,
+            "fields_filled": self.fields_filled  # Human-readable field/value pairs
         }
 
     async def _take_screenshot(self, name: str) -> Optional[str]:
@@ -191,12 +286,12 @@ class JobApplier:
             return False
 
         try:
-            # Navigate with domcontentloaded first (faster), then wait for JS redirects
+            # Navigate and wait for full page load including network requests
             log_to_console(f"   📍 Loading: {url}")
-            await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await self.page.goto(url, wait_until="networkidle", timeout=60000)
 
-            # Wait for potential JS redirects
-            await self.page.wait_for_timeout(3000)
+            # Extra wait for JS frameworks to initialize (Greenhouse, Lever, etc.)
+            await self.page.wait_for_timeout(5000)
 
             # Check if we were redirected
             final_url = self.page.url
@@ -204,87 +299,62 @@ class JobApplier:
                 log_to_console(f"   ↪️  Redirected to: {final_url}")
 
             # Check for Working Nomads expired job patterns:
-            # 1. Redirects to job listing page (e.g., /remote-development-jobs)
-            if "workingnomads.com/" in final_url:
-                if "/job/go/" not in final_url and "/jobs" not in final_url:
-                    # Redirected to category page like /remote-development-jobs
-                    log_to_console("   ❌ Job appears to be expired (redirected to category listing)")
-                    self.steps.append({
-                        "action": "navigate",
-                        "url": url,
-                        "final_url": final_url,
-                        "success": False,
-                        "error": "Job expired - redirected to category listing"
-                    })
-                    return False
-                if "workingnomads.com/jobs" in final_url and "/job/" not in final_url:
-                    log_to_console("   ❌ Job appears to be expired (redirected to job listing)")
-                    self.steps.append({
-                        "action": "navigate",
-                        "url": url,
-                        "final_url": final_url,
-                        "success": False,
-                        "error": "Job expired - redirected to job listing"
-                    })
-                    return False
+            # ONLY mark as expired if we're STILL on workingnomads.com but NOT on /job/go/ anymore
+            # This means the job redirect failed and we got sent to a listing page
+            if "workingnomads.com" in final_url and "/job/go/" not in final_url:
+                # We started with /job/go/ but ended up somewhere else on workingnomads
+                # This is a clear sign the job no longer exists
+                log_to_console(f"   ❌ Job expired - Working Nomads redirected to listing instead of job")
+                log_to_console(f"      Original: {url}")
+                log_to_console(f"      Final: {final_url}")
+                self.steps.append({
+                    "action": "navigate",
+                    "url": url,
+                    "final_url": final_url,
+                    "success": False,
+                    "error": "Job expired - Working Nomads redirect failed (job no longer exists)"
+                })
+                return False
 
             # Check if page has meaningful content
             body = await self.page.query_selector("body")
             if body:
                 text_content = await body.text_content()
+                content_length = len(text_content.strip()) if text_content else 0
 
-                # If page is empty or nearly empty, it's likely expired
-                if not text_content or len(text_content.strip()) < 100:
-                    log_to_console(f"   ❌ Page is empty or has minimal content ({len(text_content.strip()) if text_content else 0} chars)")
-                    self.steps.append({
-                        "action": "navigate",
-                        "url": url,
-                        "final_url": final_url,
-                        "success": False,
-                        "error": "Job expired - page returned empty content"
-                    })
-                    return False
+                # Check for common "job not found" or "expired" messages on the ATS page
+                # (not on Working Nomads - that's handled above)
+                if text_content and "workingnomads.com" not in final_url:
+                    text_lower = text_content.lower()
+                    expired_indicators = [
+                        "job has been closed",
+                        "position has been filled",
+                        "no longer accepting applications",
+                        "this job is no longer available",
+                        "this position has been filled",
+                        "this job posting has expired",
+                        "this requisition is no longer active",
+                    ]
+                    for indicator in expired_indicators:
+                        if indicator in text_lower:
+                            log_to_console(f"   ❌ Job expired on ATS: '{indicator}'")
+                            self.steps.append({
+                                "action": "navigate",
+                                "url": url,
+                                "final_url": final_url,
+                                "success": False,
+                                "error": f"Job expired on ATS: {indicator}"
+                            })
+                            return False
 
-                # Check for common "job not found" or "expired" messages
-                text_lower = text_content.lower()
-                expired_indicators = [
-                    "job has been closed",
-                    "position has been filled",
-                    "no longer accepting",
-                    "job not found",
-                    "this job is no longer available",
-                    "position is no longer available",
-                    "this position has been filled",
-                    "job has expired",
-                    "no longer available",
-                    "this job posting has expired",
-                ]
-                for indicator in expired_indicators:
-                    if indicator in text_lower:
-                        log_to_console(f"   ❌ Job appears to be expired: '{indicator}'")
-                        self.steps.append({
-                            "action": "navigate",
-                            "url": url,
-                            "final_url": final_url,
-                            "success": False,
-                            "error": f"Job expired: {indicator}"
-                        })
-                        return False
-
-                log_to_console(f"   ✅ Page loaded ({len(text_content)} chars)")
+                log_to_console(f"   ✅ Page loaded ({content_length} chars)")
                 self.steps.append({"action": "navigate", "url": url, "final_url": final_url, "success": True})
                 return True
 
-            # If no body found at all
-            log_to_console("   ❌ No body element found on page")
-            self.steps.append({
-                "action": "navigate",
-                "url": url,
-                "final_url": final_url,
-                "success": False,
-                "error": "No body element found"
-            })
-            return False
+            # If no body found, page might still be loading - don't mark as expired
+            log_to_console("   ⚠️  No body element found, but continuing anyway")
+            self.steps.append({"action": "navigate", "url": url, "final_url": final_url, "success": True, "warning": "No body element"})
+            return True
 
         except Exception as e:
             log_to_console(f"   ❌ Navigation failed: {e}")
@@ -380,31 +450,71 @@ Example: {{"selector": "a.apply-button", "confidence": 90}}"""
             return None
 
         try:
+            # Scroll down to ensure all form fields are loaded (lazy loading)
+            log_to_console("   📜 Scrolling to load full form...")
+            await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await self.page.wait_for_timeout(1500)
+            await self.page.evaluate("window.scrollTo(0, 0)")  # Scroll back to top
+            await self.page.wait_for_timeout(500)
+
             # First, check for iframes (common for Greenhouse, Lever, etc.)
             iframes = await self.page.query_selector_all('iframe')
             application_frame = None
 
             for iframe in iframes:
                 src = await iframe.get_attribute('src') or ''
-                # Common ATS iframe patterns
-                if any(ats in src.lower() for ats in ['greenhouse', 'lever', 'workable', 'ashby', 'jobvite']):
+                name = await iframe.get_attribute('name') or ''
+
+                # Skip Google API proxy iframes - these are just auth helpers, not forms
+                if 'googleapis' in src.lower() or 'recaptcha' in src.lower():
+                    continue
+
+                # Common ATS iframe patterns (only if they contain actual application forms)
+                ats_patterns = ['lever', 'workable', 'ashby', 'jobvite']  # Removed 'greenhouse' - their forms are on main page
+                if any(ats in src.lower() for ats in ats_patterns):
                     try:
                         frame = await iframe.content_frame()
                         if frame:
+                            # Wait for iframe content to load
+                            await frame.wait_for_load_state('domcontentloaded')
+                            await self.page.wait_for_timeout(2000)  # Extra wait for JS
                             application_frame = frame
                             log_to_console(f"   📋 Found application iframe: {src[:50]}...")
                             break
                     except Exception as e:
                         log_to_console(f"   ⚠️  Could not access iframe: {e}")
+                        continue
+
+            # If no iframe found by src, check all iframes for form content
+            if not application_frame:
+                for iframe in iframes:
+                    try:
+                        frame = await iframe.content_frame()
+                        if frame:
+                            # Check if this iframe has form elements
+                            form_check = await frame.query_selector('form, input[type="text"], input[type="email"]')
+                            if form_check:
+                                application_frame = frame
+                                log_to_console("   📋 Found form in iframe (by content)")
+                                break
+                    except Exception:
+                        continue
 
             # Get HTML from frame or main page
             if application_frame:
                 html = await application_frame.content()
                 # Store the frame reference for later use
                 self._application_frame = application_frame
+                log_to_console(f"   📄 Got HTML from iframe: {len(html)} chars")
             else:
                 html = await self.page.content()
                 self._application_frame = None
+                log_to_console(f"   📄 Got HTML from main page: {len(html)} chars")
+
+            # Debug: Check if we have actual content
+            if len(html) < 5000:
+                log_to_console(f"   ⚠️  HTML content seems too short, page may not have loaded properly")
+                log_to_console(f"   HTML snippet: {html[:500]}")
 
             html_truncated = html[:80000] if len(html) > 80000 else html
 
@@ -511,9 +621,23 @@ IMPORTANT:
 
         if not form_analysis.get("form_found"):
             log_to_console("   ❌ No form found in analysis")
+            self.steps.append({
+                "action": "fill_form",
+                "success": False,
+                "error": "No form found in analysis"
+            })
             return False
 
         fields = form_analysis.get("fields", [])
+
+        if not fields:
+            log_to_console("   ❌ No fields found in form analysis")
+            self.steps.append({
+                "action": "fill_form",
+                "success": False,
+                "error": "No fields found in form analysis"
+            })
+            return False
         log_to_console(f"   📋 Processing {len(fields)} fields...")
         filled_count = 0
 
@@ -528,6 +652,9 @@ IMPORTANT:
 
                 if not selector:
                     continue
+
+                # Fix CSS selectors with IDs starting with digits
+                selector = self._fix_css_selector(selector)
 
                 element = await target.query_selector(selector)
                 if not element:
@@ -548,31 +675,70 @@ IMPORTANT:
                     continue
 
                 # Fill based on type
+                field_label = field.get('label') or selector
+
                 if field_type in ["text", "email", "tel"]:
                     await element.fill(value)
                     filled_count += 1
-                    log_to_console(f"   ✅ Filled {field.get('label', selector)}")
+                    # Track human-readable field/value
+                    self.fields_filled.append({"field": field_label, "value": value})
+                    log_to_console(f"   ✅ Filled {field_label}: {value[:50]}..." if len(str(value)) > 50 else f"   ✅ Filled {field_label}: {value}")
 
                 elif field_type == "textarea":
                     await element.fill(value)
                     filled_count += 1
-                    log_to_console(f"   ✅ Filled textarea {field.get('label', selector)}")
+                    # Track human-readable field/value (truncate long text for display)
+                    display_value = value[:100] + "..." if len(value) > 100 else value
+                    self.fields_filled.append({"field": field_label, "value": display_value})
+                    log_to_console(f"   ✅ Filled textarea {field_label}")
 
                 elif field_type == "select":
-                    await element.select_option(label=value)
-                    filled_count += 1
+                    try:
+                        # Try native select first
+                        await element.select_option(label=value)
+                        filled_count += 1
+                        self.fields_filled.append({"field": field_label, "value": value})
+                        log_to_console(f"   ✅ Selected {field_label}: {value}")
+                    except Exception as select_err:
+                        # Might be a custom dropdown - try clicking and typing
+                        log_to_console(f"   ⚠️  Native select failed, trying custom dropdown...")
+                        try:
+                            await element.click()
+                            await self.page.wait_for_timeout(500)
+                            # Type the value to search/filter
+                            await element.type(value, delay=50)
+                            await self.page.wait_for_timeout(500)
+                            # Press Enter or click first option
+                            await self.page.keyboard.press("Enter")
+                            filled_count += 1
+                            self.fields_filled.append({"field": field_label, "value": value})
+                            log_to_console(f"   ✅ Custom dropdown selected: {value}")
+                        except Exception as custom_err:
+                            log_to_console(f"   ⚠️  Custom dropdown also failed: {custom_err}")
+                            self.steps.append({
+                                "action": "fill_field",
+                                "selector": selector,
+                                "type": field_type,
+                                "label": field_label,
+                                "success": False,
+                                "error": f"Select failed: {str(select_err)}"
+                            })
+                            continue
 
                 elif field_type == "checkbox" and value:
                     is_checked = await element.is_checked()
                     if not is_checked:
                         await element.click()
                     filled_count += 1
+                    self.fields_filled.append({"field": field_label, "value": "Checked"})
+                    log_to_console(f"   ✅ Checked {field_label}")
 
                 self.steps.append({
                     "action": "fill_field",
                     "selector": selector,
                     "type": field_type,
                     "label": field.get("label"),
+                    "value_used": str(value)[:200] if value else None,
                     "success": True
                 })
 
@@ -643,13 +809,26 @@ IMPORTANT:
 
         return False
 
-    async def _submit_application(self) -> bool:
+    async def _submit_application(self, form_analysis: Optional[dict[str, Any]] = None) -> bool:
         """Submit the application form."""
         if not self.page:
             return False
 
         # Use the application frame if we found one, otherwise use main page
         target = getattr(self, '_application_frame', None) or self.page
+
+        # Try Claude's suggested selector first
+        if form_analysis and form_analysis.get("submit_selector"):
+            try:
+                selector = self._fix_css_selector(form_analysis["submit_selector"])
+                element = await target.query_selector(selector)
+                if element and await element.is_visible():
+                    await element.click()
+                    log_to_console(f"   ✅ Clicked submit (Claude suggested): {selector}")
+                    self.steps.append({"action": "submit", "selector": selector, "source": "claude", "success": True})
+                    return True
+            except Exception as e:
+                log_to_console(f"   ⚠️  Claude's submit selector failed: {e}")
 
         # Common submit button selectors
         submit_selectors = [
@@ -658,8 +837,12 @@ IMPORTANT:
             'button:has-text("Submit")',
             'button:has-text("Submit Application")',
             'button:has-text("Apply")',
+            'button:has-text("Apply Now")',
             'button:has-text("Send")',
+            'button:has-text("Send Application")',
+            'button:has-text("Complete")',
             '[class*="submit"]',
+            '[data-testid*="submit"]',
         ]
 
         for selector in submit_selectors:
@@ -673,48 +856,157 @@ IMPORTANT:
             except Exception:
                 continue
 
+        # Log failure
+        self.steps.append({"action": "submit", "success": False, "error": "No submit button found"})
+        log_to_console("   ❌ Could not find submit button")
         return False
 
-    async def _verify_submission(self) -> bool:
-        """Verify the application was submitted successfully."""
+    async def _verify_submission(self) -> tuple[bool, str]:
+        """
+        Verify the application was submitted successfully.
+
+        Returns:
+            Tuple of (verified, evidence_description)
+        """
         if not self.page:
-            return False
+            return False, "No page available"
 
         try:
             # Wait for page changes
-            await self.page.wait_for_timeout(2000)
+            await self.page.wait_for_timeout(3000)
 
             # Get current page content
             content = await self.page.content()
             url = self.page.url
+            content_lower = content.lower()
 
-            # Check for success indicators
+            # Check for explicit success indicators (extended list)
             success_patterns = [
-                "thank you",
-                "application received",
-                "successfully submitted",
-                "application submitted",
-                "we have received",
-                "confirmation",
+                # Generic success messages
+                ("thank you for applying", "Thank you message"),
+                ("thank you for your application", "Thank you message"),
+                ("thanks for applying", "Thanks for applying"),
+                ("thanks for your application", "Thanks message"),
+                ("application received", "Application received confirmation"),
+                ("successfully submitted", "Submission success message"),
+                ("application submitted", "Application submitted message"),
+                ("we have received your application", "Receipt confirmation"),
+                ("your application has been submitted", "Submission confirmation"),
+                ("application complete", "Application complete message"),
+                ("we'll be in touch", "Follow-up promise"),
+                ("we will be in touch", "Follow-up promise"),
+                ("we'll review your application", "Review promise"),
+                ("we will review your application", "Review promise"),
+                # ATS-specific success patterns
+                ("your application was submitted", "Submission confirmation"),
+                ("application sent", "Application sent"),
+                ("you have successfully applied", "Success confirmation"),
+                ("your submission has been received", "Submission received"),
+                # Greenhouse-specific
+                ("your application has been received", "Greenhouse confirmation"),
+                ("we've received your application", "Greenhouse confirmation"),
+                # Lever-specific
+                ("application submitted!", "Lever confirmation"),
+                # Ashby-specific
+                ("submitted successfully", "Ashby confirmation"),
             ]
 
-            content_lower = content.lower()
-            for pattern in success_patterns:
+            for pattern, description in success_patterns:
                 if pattern in content_lower:
-                    log_to_console(f"   ✅ Found success indicator: '{pattern}'")
-                    return True
+                    log_to_console(f"   ✅ Verification: {description}")
+                    self.steps.append({
+                        "action": "verify_submission",
+                        "success": True,
+                        "evidence": description,
+                        "final_url": url
+                    })
+                    return True, description
 
             # Check URL for success indicators
-            if "success" in url.lower() or "thank" in url.lower() or "confirm" in url.lower():
-                log_to_console(f"   ✅ Success URL detected: {url}")
-                return True
+            success_url_patterns = ["success", "thank", "confirm", "submitted", "complete", "received"]
+            for pattern in success_url_patterns:
+                if pattern in url.lower():
+                    evidence = f"URL contains '{pattern}': {url}"
+                    log_to_console(f"   ✅ Verification: {evidence}")
+                    self.steps.append({
+                        "action": "verify_submission",
+                        "success": True,
+                        "evidence": evidence,
+                        "final_url": url
+                    })
+                    return True, evidence
 
-            log_to_console("   ⚠️  Could not confirm submission success")
-            return False
+            # Check for error indicators (explicit failures)
+            # Be MORE specific to avoid false positives from static form labels
+            # These patterns indicate ACTUAL errors, not just field labels
+            error_patterns = [
+                # Explicit error messages (not static labels)
+                ("an error occurred", "error occurred"),
+                ("something went wrong", "something went wrong"),
+                ("please try again later", "retry message"),
+                ("please correct the errors", "form validation errors"),
+                ("please fix the following", "validation errors"),
+                # Dynamic validation errors (field name + "is required")
+                ("first name is required", "missing first name"),
+                ("last name is required", "missing last name"),
+                ("email is required", "missing email"),
+                ("email address is required", "missing email"),
+                ("resume is required", "missing resume"),
+                ("phone is required", "missing phone"),
+                # Field state errors
+                ("can't be blank", "empty required field"),
+                ("cannot be blank", "empty required field"),
+                ("must not be empty", "empty required field"),
+                # Format errors
+                ("invalid email address", "invalid email"),
+                ("invalid email format", "invalid email"),
+                ("invalid phone number", "invalid phone"),
+                ("not a valid email", "invalid email"),
+                # Submission errors
+                ("failed to submit", "submission failed"),
+                ("submission failed", "submission failed"),
+                ("could not process", "processing failed"),
+            ]
+            for pattern, description in error_patterns:
+                if pattern in content_lower:
+                    log_to_console(f"   ❌ Verification: Found error indicator '{pattern}'")
+                    self.steps.append({
+                        "action": "verify_submission",
+                        "success": False,
+                        "evidence": f"Error indicator: {description}",
+                        "final_url": url
+                    })
+                    return False, f"Error found: {description}"
+
+            # Check if the form is still visible (might indicate submission didn't happen)
+            # Use the application frame if available
+            target = getattr(self, '_application_frame', None) or self.page
+            form_still_visible = await target.query_selector('form input[type="email"], form input[name="email"]')
+
+            if form_still_visible:
+                # Form is still there - check if it looks like the same form
+                # This could mean submission didn't work
+                log_to_console(f"   ⚠️  Form still visible after submission attempt")
+
+            # No clear success or error - inconclusive
+            log_to_console(f"   ⚠️  Verification inconclusive - no clear success/error indicators")
+            log_to_console(f"   📍 Final URL: {url}")
+            self.steps.append({
+                "action": "verify_submission",
+                "success": None,  # Inconclusive
+                "evidence": "No clear success or error indicators found",
+                "final_url": url
+            })
+            return None, f"Inconclusive - final URL: {url}"
 
         except Exception as e:
             log_to_console(f"   ❌ Verification failed: {e}")
-            return False
+            self.steps.append({
+                "action": "verify_submission",
+                "success": False,
+                "error": str(e)
+            })
+            return False, f"Verification error: {e}"
 
     async def _answer_custom_question(
         self, question: str, job: Job

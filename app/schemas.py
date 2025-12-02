@@ -38,6 +38,8 @@ class JobResponse(JobBase):
     updated_at: datetime
     matched_at: Optional[datetime] = None
     applied_at: Optional[datetime] = None
+    application_data: Optional[dict[str, Any]] = None
+    application_error: Optional[str] = None
 
     class Config:
         from_attributes = True
