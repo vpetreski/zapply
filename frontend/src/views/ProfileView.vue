@@ -481,7 +481,18 @@ async function handleDeleteConfirm() {
 }
 
 function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleString()
+  // Backend stores UTC timestamps, ensure we parse as UTC
+  const date = new Date(dateString + 'Z')  // Append 'Z' to indicate UTC
+  return date.toLocaleString('en-US', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  })
 }
 
 function formatFileSize(bytes: number): string {
