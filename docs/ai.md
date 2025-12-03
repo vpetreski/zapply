@@ -1,30 +1,65 @@
 # Zapply - AI Context
 
 ## Current Phase
-**Phase 7: Applier Implementation** 🤖 - IN PROGRESS
+**Phase 7: Applier Implementation** - BLOCKED
 
 Implementing the Applier - the most critical component that actually submits job applications.
 
 **Current Branch:** `feature/applier`
 
-## Last Session - 2025-12-02 (Applier Implementation Start)
+## Last Session - 2025-12-02 (Form Filling Issues - BLOCKED)
 
-### Accomplished This Session
+### Status: BLOCKED
 
-**1. Profile Improvements** ✅
-- Added LinkedIn and GitHub fields to UserProfile
-- Fixed CV upload to always read fresh from disk
-- Renamed "Generate Profile" to "Analyze CV & Update Profile"
-- Database migration for new fields
+Form filling with Greenhouse ATS is not working properly. React forms are rejecting our input methods.
 
-**2. Infrastructure Fixes** ✅
-- Added `nas-local-sync` and `local-nas-sync` Justfile recipes
-- Fixed Playwright browser installation issue
-- Synced production data to local for testing
+### What Was Attempted
 
-**3. Applier Planning** ✅
-- Comprehensive codebase analysis
-- Detailed implementation plan created (see below)
+**1. Location Autocomplete**
+- Tried Google Places `.pac-item` selectors
+- Tried ArrowDown + Enter keyboard navigation
+- Tried JS click on dropdown items
+- **RESULT:** Location field stays empty or doesn't pass React validation
+
+**2. Text Field Validation (LinkedIn, Other fields)**
+- Tried native HTMLInputElement value setter pattern
+- Tried `_set_react_input_value` method with event dispatching
+- Tried Tab-through validation after filling
+- **RESULT:** Fields show RED validation errors despite having values
+
+**3. CV Upload**
+- File uploads to input element
+- Tried various event triggering after upload
+- **RESULT:** Still shows validation errors
+
+### Root Cause Analysis
+
+Greenhouse (and other modern ATS) use React-based forms that:
+1. Override native DOM `value` property setters
+2. Maintain internal state that doesn't sync with DOM manipulation
+3. Require specific React event dispatching to update state
+4. Use Google Places autocomplete which needs actual dropdown selection
+
+### Files Modified
+- `app/applier/applier.py` - Multiple fix attempts (none working)
+- `docs/applier-instructions.md` - Created for reference
+
+### Next Steps (Tomorrow)
+
+**Need a Different Approach:**
+1. Research how Playwright handles React forms properly
+2. Look at how other automation tools (Puppeteer, Selenium) solve this
+3. Consider using Claude Computer Use for form filling instead of direct DOM manipulation
+4. Test on simpler non-React forms first to establish baseline
+5. Possibly use browser devtools to inspect React component state
+
+### Current Applier Code State
+The applier code has multiple attempted fixes that don't work:
+- `_set_react_input_value` - attempts React-compatible value setting
+- Google Places selectors - attempts autocomplete selection
+- Event dispatching - attempts to trigger React state updates
+
+All these need to be revisited with a fresh approach.
 
 ---
 
@@ -50,65 +85,11 @@ MATCHED Job → ApplierService →
   12. Log to ApplicationLog with screenshots
 ```
 
-### Implementation Steps
-
-#### Step 1: Core ApplierService ⬜
-- Create `app/services/applier_service.py` (orchestration layer)
-- Handle database operations, logging, error handling
-- Query matched jobs, process one by one
-- Update job status and create ApplicationLog entries
-
-#### Step 2: JobApplier Class Rewrite ⬜
-- Initialize Playwright browser (reuse pattern from scraper)
-- Accept UserProfile as input
-- Screenshot capture for debugging at each step
-- Return detailed results (success/failure, data, screenshots)
-
-#### Step 3: Page Analysis with Claude ⬜
-- Take screenshot of application page
-- Send to Claude Opus with prompt to analyze form structure
-- Parse response to understand fields, types, required status
-- Identify submit button
-
-#### Step 4: Form Filling Logic ⬜
-- Map UserProfile fields to form fields:
-  - name → name/first_name/last_name
-  - email → email
-  - phone → phone/telephone
-  - linkedin → linkedin/social
-  - github → github/portfolio/website
-  - location → location/city/address
-  - cv_data → resume/cv file upload
-- Use Claude for ambiguous field mapping
-
-#### Step 5: Custom Question Handling ⬜
-- Detect text areas and unusual fields
-- Send question + job context + profile to Claude
-- Generate contextual answers
-- Log Q&A pairs in ApplicationLog
-
-#### Step 6: CV Upload ⬜
-- Detect file upload input (input[type="file"])
-- Save cv_data to temp file, upload it
-- Handle different upload mechanisms
-
-#### Step 7: Submission & Verification ⬜
-- Click submit button
-- Wait for confirmation (page change, success message)
-- Take final screenshot
-- Detect success/failure indicators
-
-#### Step 8: API & UI Integration ⬜
-- Add `/api/applier/run` endpoint
-- Add `/api/applier/apply/{job_id}` for single job
-- Add "Apply" button in jobs dashboard
-- Show application status/logs
-
 ### Profile Data Available
 ```python
 UserProfile:
   - name, email, phone, location, rate
-  - linkedin, github  # Just added
+  - linkedin, github
   - cv_filename, cv_data (binary PDF), cv_text
   - custom_instructions, skills, preferences
   - ai_generated_summary
@@ -132,35 +113,15 @@ ApplicationLog:
 ### AI Model
 - `APPLIER_MODEL` = Claude Opus 4.5 (maximum intelligence for arbitrary ATS)
 
-### MVP Constraints
-1. **Manual trigger only** - Not automatic after matching
-2. **One job at a time** - With logging between each
-3. **Screenshot everything** - For debugging and verification
-4. **Human supervision** - First applications need oversight
-5. **Simple forms first** - Direct apply before complex multi-page ATS
-
-### Files to Create/Modify
-1. `app/services/applier_service.py` - NEW
-2. `app/applier/applier.py` - REWRITE
-3. `app/routers/applier.py` - NEW
-4. `app/main.py` - Add router
-5. `frontend/src/views/JobsView.vue` - Add apply button (later)
-
-### Success Criteria
-- [ ] Can navigate to job URL
-- [ ] Can find and click Apply button
-- [ ] Can analyze form with Claude
-- [ ] Can fill standard fields (name, email, phone, etc.)
-- [ ] Can upload CV
-- [ ] Can answer custom questions
-- [ ] Can submit application
-- [ ] Can verify success/failure
-- [ ] Can process all matched jobs sequentially
-- [ ] Proper error handling and logging
-
 ---
 
 ## Previous Sessions Summary
+
+### Session - 2025-12-02 (Profile Improvements)
+- Added LinkedIn and GitHub fields to UserProfile
+- Fixed CV upload to always read fresh from disk
+- Database migration for new fields
+- Added Justfile sync recipes
 
 ### Session - 2025-11-29 (New Mac Setup & Code Cleanup)
 - New Mac environment setup
@@ -184,15 +145,15 @@ ApplicationLog:
 - [x] Real-time dashboard and scheduler
 - [x] Production deployment to NAS
 
-### 🔄 Phase 7: Applier Implementation (IN PROGRESS)
+### ⏸️ Phase 7: Applier Implementation (BLOCKED)
 - [x] Planning and architecture
-- [ ] Core ApplierService
-- [ ] JobApplier with Playwright
-- [ ] Claude page analysis
-- [ ] Form filling logic
-- [ ] CV upload
+- [x] ApplierService orchestration layer
+- [x] JobApplier with Playwright
+- [x] Claude page analysis
+- [ ] **BLOCKED:** Form filling logic (React compatibility issues)
+- [ ] CV upload validation
 - [ ] Submission and verification
-- [ ] API endpoints
+- [x] API endpoints
 - [ ] UI integration
 
 ### 📋 Phase 8: External Access (Future)
@@ -204,13 +165,13 @@ ApplicationLog:
 ## Key Files
 
 - `app/ai_models.py` - AI model constants
-- `app/services/applier_service.py` - Applier orchestration (to create)
-- `app/applier/applier.py` - Core applier logic (to rewrite)
-- `app/routers/applier.py` - API endpoints (to create)
+- `app/services/applier_service.py` - Applier orchestration
+- `app/applier/applier.py` - Core applier logic (needs rewrite)
+- `app/routers/applier.py` - API endpoints
 - `docs/ai.md` - This file
 
 ---
 
 **Last Updated:** 2025-12-02 by Claude Code
 
-**Current Task:** Implementing Applier Step 1 & 2
+**Current Blocker:** React form filling not working - need different approach
