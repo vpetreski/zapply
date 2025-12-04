@@ -88,9 +88,6 @@ class StatsResponse(BaseModel):
     new_jobs: int
     matched_jobs: int
     rejected_jobs: int
-    applied_jobs: int
-    failed_jobs: int
-    success_rate: float = Field(description="Percentage of successful applications")
 
 
 class HealthResponse(BaseModel):

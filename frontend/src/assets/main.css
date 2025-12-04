@@ -60,16 +60,6 @@
   color: #fee2e2;
 }
 
-.badge-applied {
-  background-color: #065f46;
-  color: #d1fae5;
-}
-
-.badge-failed {
-  background-color: #7f1d1d;
-  color: #fee2e2;
-}
-
 .grid {
   display: grid;
   gap: 1.5rem;

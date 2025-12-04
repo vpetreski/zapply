@@ -13,9 +13,6 @@
             <option value="new">New</option>
             <option value="matched">Matched</option>
             <option value="rejected">Rejected</option>
-            <option value="applied">Applied</option>
-            <option value="failed">Failed</option>
-            <option value="expired">Expired</option>
           </select>
         </div>
 
@@ -117,68 +114,6 @@
           <div v-if="selectedJob.match_reasoning" class="job-section match-reasoning-section">
             <h3>Match Reasoning</h3>
             <div class="match-reasoning">{{ selectedJob.match_reasoning }}</div>
-          </div>
-
-          <!-- Application Data Section -->
-          <div v-if="selectedJob.application_data || selectedJob.application_error" class="job-section application-section">
-            <h3>Application Details</h3>
-
-            <!-- Application Error -->
-            <div v-if="selectedJob.application_error" class="application-error">
-              <strong>Error:</strong> {{ selectedJob.application_error }}
-            </div>
-
-            <!-- Fields Filled Summary -->
-            <div v-if="selectedJob.application_data?.fields_filled && selectedJob.application_data.fields_filled.length > 0" class="fields-filled-summary">
-              <h4>Fields Filled ({{ selectedJob.application_data.fields_filled.length }})</h4>
-              <div class="fields-grid">
-                <div v-for="(field, index) in selectedJob.application_data.fields_filled" :key="index" class="field-item">
-                  <span class="field-name">{{ field.field }}:</span>
-                  <span class="field-value">{{ field.value }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Application Steps -->
-            <div v-if="selectedJob.application_data?.steps" class="application-steps">
-              <h4>Steps Taken ({{ selectedJob.application_data.steps.length }})</h4>
-              <div v-for="(step, index) in selectedJob.application_data.steps" :key="index" class="step-item">
-                <div class="step-header">
-                  <span class="step-number">{{ index + 1 }}</span>
-                  <span class="step-action">{{ step.action }}</span>
-                  <span :class="['step-status', step.success === true ? 'success' : step.success === false ? 'failed' : 'neutral']">
-                    {{ step.success === true ? '✓' : step.success === false ? '✗' : '?' }}
-                  </span>
-                </div>
-                <div v-if="step.url" class="step-detail">
-                  <strong>URL:</strong> <a :href="step.url" target="_blank">{{ truncateUrl(step.url) }}</a>
-                </div>
-                <div v-if="step.final_url && step.final_url !== step.url" class="step-detail">
-                  <strong>Redirected to:</strong> <a :href="step.final_url" target="_blank">{{ truncateUrl(step.final_url) }}</a>
-                </div>
-                <div v-if="step.label" class="step-detail">
-                  <strong>Field:</strong> {{ step.label }}
-                </div>
-                <div v-if="step.value_used" class="step-detail">
-                  <strong>Value:</strong> {{ truncate(step.value_used, 100) }}
-                </div>
-                <div v-if="step.evidence" class="step-detail step-evidence">
-                  <strong>Evidence:</strong> {{ step.evidence }}
-                </div>
-                <div v-if="step.error" class="step-detail step-error">
-                  <strong>Error:</strong> {{ step.error }}
-                </div>
-                <div v-if="step.notes" class="step-detail step-notes">
-                  <strong>Notes:</strong> {{ truncate(step.notes, 200) }}
-                </div>
-              </div>
-            </div>
-
-            <!-- Screenshot if available -->
-            <div v-if="selectedJob.application_data?.screenshot" class="application-screenshot">
-              <h4>Screenshot</h4>
-              <img :src="selectedJob.application_data.screenshot" alt="Application screenshot" />
-            </div>
           </div>
 
           <div class="job-section">
@@ -310,12 +245,6 @@ const truncate = (text, length) => {
   if (!text) return ''
   if (text.length <= length) return text
   return text.substring(0, length) + '...'
-}
-
-const truncateUrl = (url, maxLength = 60) => {
-  if (!url) return ''
-  if (url.length <= maxLength) return url
-  return url.substring(0, maxLength) + '...'
 }
 
 const getMatchScoreClass = (score) => {

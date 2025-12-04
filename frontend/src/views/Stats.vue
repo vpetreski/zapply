@@ -25,24 +25,6 @@
             <span class="label">Rejected</span>
             <span class="value text-danger">{{ stats.rejected_jobs }}</span>
           </div>
-          <div class="stat-item">
-            <span class="label">Applied</span>
-            <span class="value text-success">{{ stats.applied_jobs }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="label">Failed</span>
-            <span class="value text-danger">{{ stats.failed_jobs }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Success Rate</h3>
-        <div class="success-rate">
-          <div class="rate-value">{{ stats.success_rate }}%</div>
-          <p class="text-muted">
-            {{ stats.applied_jobs }} successful out of {{ stats.applied_jobs + stats.failed_jobs }} attempts
-          </p>
         </div>
       </div>
     </div>
@@ -58,10 +40,7 @@ const stats = ref({
   total_jobs: 0,
   new_jobs: 0,
   matched_jobs: 0,
-  rejected_jobs: 0,
-  applied_jobs: 0,
-  failed_jobs: 0,
-  success_rate: 0
+  rejected_jobs: 0
 })
 
 const fetchStats = async () => {
@@ -111,17 +90,5 @@ onMounted(() => {
 .stat-item .value {
   font-size: 2rem;
   font-weight: 700;
-}
-
-.success-rate {
-  text-align: center;
-  padding: 2rem;
-}
-
-.rate-value {
-  font-size: 4rem;
-  font-weight: 700;
-  color: var(--success);
-  margin-bottom: 1rem;
 }
 </style>

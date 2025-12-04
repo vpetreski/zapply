@@ -21,10 +21,6 @@ class JobStatus(str, Enum):
     NEW = "new"
     MATCHED = "matched"
     REJECTED = "rejected"
-    APPLIED = "applied"
-    FAILED = "failed"
-    REPORTED = "reported"
-    EXPIRED = "expired"  # Job is no longer available
 
 
 class JobSource(str, Enum):

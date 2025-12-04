@@ -11,7 +11,7 @@ from app.utils import log_to_console
 
 
 class Reporter:
-    """Generate reports and notifications about application activity."""
+    """Generate reports and notifications about job matching activity."""
 
     def __init__(self, db: AsyncSession) -> None:
         """Initialize reporter."""
@@ -36,36 +36,21 @@ class Reporter:
         )
         matched_jobs = (await self.db.execute(matched_query)).scalars().all()
 
-        applied_query = select(Job).filter(
-            Job.applied_at >= since, Job.status == JobStatus.APPLIED.value
+        rejected_query = select(Job).filter(
+            Job.matched_at >= since, Job.status == JobStatus.REJECTED.value
         )
-        applied_jobs = (await self.db.execute(applied_query)).scalars().all()
-
-        failed_query = select(Job).filter(
-            Job.applied_at >= since, Job.status == JobStatus.FAILED.value
-        )
-        failed_jobs = (await self.db.execute(failed_query)).scalars().all()
+        rejected_jobs = (await self.db.execute(rejected_query)).scalars().all()
 
         return {
             "period": "last_24_hours",
             "summary": {
                 "new_jobs": len(new_jobs),
                 "matched_jobs": len(matched_jobs),
-                "applied_jobs": len(applied_jobs),
-                "failed_jobs": len(failed_jobs),
+                "rejected_jobs": len(rejected_jobs),
             },
-            "applied_to": [
+            "matched": [
                 {"id": job.id, "title": job.title, "company": job.company, "url": job.url}
-                for job in applied_jobs
-            ],
-            "failures": [
-                {
-                    "id": job.id,
-                    "title": job.title,
-                    "company": job.company,
-                    "error": job.application_error,
-                }
-                for job in failed_jobs
+                for job in matched_jobs
             ],
             "generated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         }
@@ -84,20 +69,13 @@ class Reporter:
         log_to_console(f"\nSummary:")
         log_to_console(f"  New jobs scraped: {report['summary']['new_jobs']}")
         log_to_console(f"  Jobs matched: {report['summary']['matched_jobs']}")
-        log_to_console(f"  Applications submitted: {report['summary']['applied_jobs']}")
-        log_to_console(f"  Applications failed: {report['summary']['failed_jobs']}")
+        log_to_console(f"  Jobs rejected: {report['summary']['rejected_jobs']}")
 
-        if report["applied_to"]:
-            log_to_console(f"\nSuccessfully applied to:")
-            for job in report["applied_to"]:
+        if report["matched"]:
+            log_to_console(f"\nMatched jobs ready for review:")
+            for job in report["matched"]:
                 log_to_console(f"  - {job['title']} at {job['company']}")
                 log_to_console(f"    {job['url']}")
-
-        if report["failures"]:
-            log_to_console(f"\nFailed applications:")
-            for job in report["failures"]:
-                log_to_console(f"  - {job['title']} at {job['company']}")
-                log_to_console(f"    Error: {job['error']}")
 
         log_to_console("=" * 80 + "\n")
 
