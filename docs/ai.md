@@ -1,177 +1,141 @@
 # Zapply - AI Context
 
 ## Current Phase
-**Phase 7: Applier Implementation** - BLOCKED
+**Phase 7 Complete: Applier Removed, Manual Apply Workflow**
 
-Implementing the Applier - the most critical component that actually submits job applications.
+After extensive experimentation, the automated Applier was removed. The system now focuses on what works well: automated scraping and AI-powered matching. Users manually apply to matched jobs.
 
-**Current Branch:** `feature/applier`
+**Current Branch:** `feature/applier` (ready for merge to main)
 
-## Last Session - 2025-12-02 (Form Filling Issues - BLOCKED)
+## Last Session - 2025-12-03 (Applier Removal & Cleanup)
 
-### Status: BLOCKED
+### What Was Done
 
-Form filling with Greenhouse ATS is not working properly. React forms are rejecting our input methods.
+**Decision: Remove Applier Entirely**
 
-### What Was Attempted
+After multiple sessions attempting to make automated form filling work with modern React-based ATS systems (Greenhouse, Lever, etc.), we concluded that:
 
-**1. Location Autocomplete**
-- Tried Google Places `.pac-item` selectors
-- Tried ArrowDown + Enter keyboard navigation
-- Tried JS click on dropdown items
-- **RESULT:** Location field stays empty or doesn't pass React validation
+1. React forms maintain internal state that doesn't sync with DOM manipulation
+2. Google Places autocomplete requires actual dropdown selection
+3. Each ATS has unique quirks making a generic solution impractical
+4. The complexity and brittleness outweighed the benefits for MVP
 
-**2. Text Field Validation (LinkedIn, Other fields)**
-- Tried native HTMLInputElement value setter pattern
-- Tried `_set_react_input_value` method with event dispatching
-- Tried Tab-through validation after filling
-- **RESULT:** Fields show RED validation errors despite having values
+**Cleanup Completed:**
 
-**3. CV Upload**
-- File uploads to input element
-- Tried various event triggering after upload
-- **RESULT:** Still shows validation errors
+1. **Removed Applier Module**
+   - Deleted `app/applier/__init__.py`
+   - Deleted `app/applier/applier.py` (2050 lines of Playwright + Claude code)
+   - Deleted `app/services/applier_service.py` (249 lines)
+   - Deleted `app/routers/applier.py` (233 lines)
+   - Deleted `docs/applier-instructions.md`
 
-### Root Cause Analysis
+2. **Simplified Job Statuses**
+   - Removed APPLIED, FAILED, REPORTED from `JobStatus` enum
+   - Now only: `NEW`, `MATCHED`, `REJECTED`
+   - Updated `app/models.py`, `app/schemas.py`, `app/routers/stats.py`
+   - Updated `app/reporter/reporter.py` to only track simplified statuses
 
-Greenhouse (and other modern ATS) use React-based forms that:
-1. Override native DOM `value` property setters
-2. Maintain internal state that doesn't sync with DOM manipulation
-3. Require specific React event dispatching to update state
-4. Use Google Places autocomplete which needs actual dropdown selection
+3. **Frontend Cleanup**
+   - Removed "Apply" buttons from Jobs.vue
+   - Removed applied/failed styling
+   - Removed "expired" from status filter dropdown
+   - Updated Stats.vue for simplified status display
 
-### Files Modified
-- `app/applier/applier.py` - Multiple fix attempts (none working)
-- `docs/applier-instructions.md` - Created for reference
+4. **Code Cleanup**
+   - Removed unused `CLAUDE_OPUS` model constant from `app/ai_models.py`
 
-### Next Steps (Tomorrow)
-
-**Need a Different Approach:**
-1. Research how Playwright handles React forms properly
-2. Look at how other automation tools (Puppeteer, Selenium) solve this
-3. Consider using Claude Computer Use for form filling instead of direct DOM manipulation
-4. Test on simpler non-React forms first to establish baseline
-5. Possibly use browser devtools to inspect React component state
-
-### Current Applier Code State
-The applier code has multiple attempted fixes that don't work:
-- `_set_react_input_value` - attempts React-compatible value setting
-- Google Places selectors - attempts autocomplete selection
-- Event dispatching - attempts to trigger React state updates
-
-All these need to be revisited with a fresh approach.
+### Commits in This Branch
+- `09fd3a2` - Remove applier and simplify job statuses to new/matched/rejected
+- Previous commits: Applier implementation attempts (now reverted)
 
 ---
 
-## Applier Implementation Plan
+## New Workflow: Auto Scrape + Match, Manual Apply
 
-### Overview
-The Applier navigates to matched job URLs, finds application forms, fills them intelligently using Claude Opus, and submits applications automatically.
+### How Zapply Works Now
 
-### Architecture Flow
 ```
-MATCHED Job → ApplierService →
-  1. Launch Playwright browser
-  2. Navigate to job.url
-  3. Find "Apply" button and click it
-  4. Detect ATS type (Greenhouse, Lever, Workday, direct form, etc.)
-  5. Extract form structure using Claude (analyze HTML/screenshot)
-  6. Fill form fields from UserProfile data
-  7. Answer custom questions using Claude
-  8. Upload CV (PDF from profile)
-  9. Submit application
-  10. Verify success (check for confirmation)
-  11. Update job status → APPLIED/FAILED
-  12. Log to ApplicationLog with screenshots
+Scheduler (hourly) → Scraper → NEW jobs
+                         ↓
+                     Matcher → MATCHED / REJECTED
+                         ↓
+                   Dashboard → User reviews MATCHED jobs
+                         ↓
+                   User manually applies on job sites
 ```
 
-### Profile Data Available
-```python
-UserProfile:
-  - name, email, phone, location, rate
-  - linkedin, github
-  - cv_filename, cv_data (binary PDF), cv_text
-  - custom_instructions, skills, preferences
-  - ai_generated_summary
-```
+### User Daily Workflow
 
-### Database Fields (Already Exist)
-```python
-Job:
-  - status: MATCHED → APPLIED/FAILED
-  - applied_at: timestamp
-  - application_data: JSON (form data, screenshots)
-  - application_error: error message
+1. **Morning**: Open Zapply dashboard
+2. **Review**: Check MATCHED jobs from overnight scraping
+3. **Apply**: Click job URL, apply manually on the job site
+4. **Track**: (Optional) Mark jobs in some way if needed
 
-ApplicationLog:
-  - job_id, status, error_message
-  - screenshots: JSON array
-  - ai_prompts, ai_responses: JSON arrays
-  - started_at, completed_at, duration_seconds
-```
+### Why This Works
 
-### AI Model
-- `APPLIER_MODEL` = Claude Opus 4.5 (maximum intelligence for arbitrary ATS)
-
----
-
-## Previous Sessions Summary
-
-### Session - 2025-12-02 (Profile Improvements)
-- Added LinkedIn and GitHub fields to UserProfile
-- Fixed CV upload to always read fresh from disk
-- Database migration for new fields
-- Added Justfile sync recipes
-
-### Session - 2025-11-29 (New Mac Setup & Code Cleanup)
-- New Mac environment setup
-- Environment variable cleanup
-- AI model refactoring (created `app/ai_models.py`)
-
-### Session - 2025-11-26 (Critical Login Fix & Deployment)
-- Fixed production login (bcrypt hash handling)
-- Automated deployment file sync
-- Matching quality verified
+- Scraping and matching are automated and work reliably
+- AI matching with Claude Sonnet is accurate and cost-effective
+- Manual application avoids ATS compatibility issues
+- User maintains control over application quality
+- Simple, reliable, maintainable
 
 ---
 
 ## Implementation Status
 
-### ✅ Phase 1-6: Complete
-- [x] Backend and frontend
+### ✅ Complete
+- [x] FastAPI backend with async SQLAlchemy
 - [x] Working Nomads scraper with Playwright
-- [x] Claude API integration for matching
+- [x] Claude API integration for matching (Sonnet model)
 - [x] UserProfile management with AI generation
-- [x] Real-time dashboard and scheduler
-- [x] Production deployment to NAS
+- [x] Real-time Vue.js dashboard
+- [x] APScheduler for hourly/daily scheduling
+- [x] Production deployment on Synology NAS
+- [x] Simplified status workflow (NEW/MATCHED/REJECTED)
 
-### ⏸️ Phase 7: Applier Implementation (BLOCKED)
-- [x] Planning and architecture
-- [x] ApplierService orchestration layer
-- [x] JobApplier with Playwright
-- [x] Claude page analysis
-- [ ] **BLOCKED:** Form filling logic (React compatibility issues)
-- [ ] CV upload validation
-- [ ] Submission and verification
-- [x] API endpoints
-- [ ] UI integration
+### ❌ Removed (By Design)
+- [x] ~~Automated Applier~~ - Removed due to ATS compatibility issues
+- [x] ~~APPLIED/FAILED/REPORTED statuses~~ - No longer needed
 
-### 📋 Phase 8: External Access (Future)
-- [ ] Configure zapply.dev domain
-- [ ] nginx reverse proxy with SSL
+### 📋 Next Steps: Polish for Daily Use
+
+**Tomorrow's Focus:**
+1. Review scraping reliability - ensure all jobs are captured
+2. Review matching quality - fine-tune prompts if needed
+3. Test scheduler - verify hourly scrape + match runs smoothly
+4. UI polish - make daily review workflow smooth
+5. Consider adding "applied" checkbox or note field for manual tracking
 
 ---
 
 ## Key Files
 
-- `app/ai_models.py` - AI model constants
-- `app/services/applier_service.py` - Applier orchestration
-- `app/applier/applier.py` - Core applier logic (needs rewrite)
-- `app/routers/applier.py` - API endpoints
-- `docs/ai.md` - This file
+- `app/ai_models.py` - AI model constants (CLAUDE_SONNET for matching)
+- `app/matcher/matcher.py` - Job matching logic
+- `app/scraper/` - Working Nomads scraper
+- `app/routers/` - API endpoints (jobs, profile, stats, runs)
+- `frontend/src/views/Jobs.vue` - Main job review dashboard
 
 ---
 
-**Last Updated:** 2025-12-02 by Claude Code
+## Architecture Notes
 
-**Current Blocker:** React form filling not working - need different approach
+### AI Models
+- **Matching**: Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`)
+- **Profile Generation**: Claude Sonnet 4.5
+
+### Database
+- PostgreSQL with async SQLAlchemy
+- Job statuses: NEW → MATCHED/REJECTED
+- UserProfile with CV storage and AI-generated summary
+
+### Deployment
+- Docker Compose on Synology NAS
+- Traefik reverse proxy
+- PostgreSQL in container
+
+---
+
+**Last Updated:** 2025-12-03 by Claude Code
+
+**Status:** Ready for daily use - auto scrape/match, manual apply workflow
