@@ -129,19 +129,19 @@ def configure_scheduler_jobs(frequency: str) -> None:
         return
 
     if frequency == "daily":
-        # Run at 9pm Colombian time using proper timezone
+        # Run at 6am Colombian time using proper timezone
         # Colombia uses America/Bogota timezone (UTC-5, no DST)
         from zoneinfo import ZoneInfo
 
-        trigger = CronTrigger(hour=21, minute=0, timezone=ZoneInfo("America/Bogota"))
+        trigger = CronTrigger(hour=6, minute=0, timezone=ZoneInfo("America/Bogota"))
         scheduler.add_job(
             daily_run,
             trigger=trigger,
             id="daily_run",
-            name="Daily Pipeline Run (9pm Colombian time)",
+            name="Daily Pipeline Run (6am Colombian time)",
             replace_existing=True,
         )
-        logger.info("Scheduler configured for daily runs at 9pm America/Bogota time")
+        logger.info("Scheduler configured for daily runs at 6am America/Bogota time")
 
     elif frequency == "hourly":
         # Run at the start of every hour

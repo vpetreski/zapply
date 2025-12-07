@@ -32,6 +32,7 @@ class JobResponse(JobBase):
 
     id: int
     status: str
+    matching_source: str = "auto"
     match_reasoning: Optional[str] = None
     match_score: Optional[float] = None
     created_at: datetime
@@ -58,6 +59,7 @@ class JobStatusUpdate(BaseModel):
     """Schema for updating job status."""
 
     status: str
+    matching_source: Optional[str] = None
     match_reasoning: Optional[str] = None
     match_score: Optional[float] = None
     application_data: Optional[dict[str, Any]] = None

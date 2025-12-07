@@ -23,6 +23,13 @@ class JobStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class MatchingSource(str, Enum):
+    """How the job was matched (by AI or manually)."""
+
+    AUTO = "auto"
+    MANUAL = "manual"
+
+
 class JobSource(str, Enum):
     """Job source platforms."""
 
@@ -61,6 +68,9 @@ class Job(Base):
     )
 
     # Matching information
+    matching_source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=MatchingSource.AUTO.value
+    )
     match_reasoning: Mapped[Optional[str]] = mapped_column(Text)
     match_score: Mapped[Optional[float]] = mapped_column()
 
