@@ -78,7 +78,7 @@
                 {{ updatingJobId === job.id ? '...' : 'Mark Matched' }}
               </button>
               <button
-                v-if="job.status === 'matched'"
+                v-if="job.status === 'matched' && !job.applied_at"
                 @click.stop="markAsRejected(job)"
                 class="btn btn-danger btn-sm"
                 :disabled="updatingJobId === job.id"
@@ -171,7 +171,7 @@
             {{ updatingJobId === selectedJob.id ? 'Updating...' : 'Mark as Matched' }}
           </button>
           <button
-            v-if="selectedJob.status === 'matched'"
+            v-if="selectedJob.status === 'matched' && !selectedJob.applied_at"
             @click="markAsRejected(selectedJob)"
             class="btn btn-danger"
             :disabled="updatingJobId === selectedJob.id"
