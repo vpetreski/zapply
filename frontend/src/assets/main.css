@@ -60,6 +60,16 @@
   color: #fee2e2;
 }
 
+.badge-auto {
+  background-color: #1e3a5f;
+  color: #93c5fd;
+}
+
+.badge-manual {
+  background-color: #5b21b6;
+  color: #ddd6fe;
+}
+
 .grid {
   display: grid;
   gap: 1.5rem;

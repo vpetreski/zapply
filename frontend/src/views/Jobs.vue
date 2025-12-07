@@ -58,6 +58,7 @@
                 {{ job.match_score }}%
               </span>
               <span :class="['badge', `badge-${job.status}`]">{{ job.status }}</span>
+              <span :class="['badge', `badge-${job.matching_source}`]">{{ job.matching_source }}</span>
             </div>
           </div>
           <p class="job-description">{{ truncate(job.description, 200) }}</p>
@@ -122,6 +123,7 @@
         <div class="modal-body">
           <div class="job-meta">
             <span :class="['badge', `badge-${selectedJob.status}`]">{{ selectedJob.status }}</span>
+            <span :class="['badge', `badge-${selectedJob.matching_source}`]">{{ selectedJob.matching_source }}</span>
             <span
               v-if="selectedJob.match_score !== null && selectedJob.match_score !== undefined"
               :class="['match-badge', 'match-badge-large', getMatchScoreClass(selectedJob.match_score)]"
