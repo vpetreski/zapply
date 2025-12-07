@@ -69,7 +69,7 @@ class Job(Base):
 
     # Matching information
     matching_source: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=MatchingSource.AUTO.value
+        String(20), nullable=False, default=MatchingSource.AUTO.value, index=True
     )
     match_reasoning: Mapped[Optional[str]] = mapped_column(Text)
     match_score: Mapped[Optional[float]] = mapped_column()
@@ -173,7 +173,6 @@ class RunPhase(str, Enum):
 
     SCRAPING = "scraping"
     MATCHING = "matching"
-    APPLYING = "applying"
     REPORTING = "reporting"
 
 

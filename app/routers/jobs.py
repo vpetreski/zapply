@@ -51,8 +51,12 @@ async def list_jobs(
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar_one()
 
-    # Always sort by date desc, then by score desc
-    query = query.order_by(Job.created_at.desc(), Job.match_score.desc().nullslast())
+    # Always sort by date (day only) desc, then by score desc
+    # Using func.date() to group jobs from same day together, then sort by score within each day
+    query = query.order_by(
+        func.date(Job.created_at).desc(),
+        Job.match_score.desc().nullslast()
+    )
 
     # Apply pagination
     query = query.offset((page - 1) * page_size).limit(page_size)
@@ -120,6 +124,9 @@ async def update_job_status(
         job.match_score = update.match_score
     if update.application_data is not None:
         job.application_data = update.application_data
+        # Set applied_at timestamp when marking as applied
+        if not job.applied_at:
+            job.applied_at = datetime.now(timezone.utc).replace(tzinfo=None)
     if update.application_error is not None:
         job.application_error = update.application_error
 
