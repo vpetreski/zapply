@@ -32,12 +32,15 @@ class JobResponse(JobBase):
 
     id: int
     status: str
+    matching_source: str = "auto"
     match_reasoning: Optional[str] = None
     match_score: Optional[float] = None
     created_at: datetime
     updated_at: datetime
     matched_at: Optional[datetime] = None
     applied_at: Optional[datetime] = None
+    application_data: Optional[dict[str, Any]] = None
+    application_error: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -56,6 +59,7 @@ class JobStatusUpdate(BaseModel):
     """Schema for updating job status."""
 
     status: str
+    matching_source: Optional[str] = None
     match_reasoning: Optional[str] = None
     match_score: Optional[float] = None
     application_data: Optional[dict[str, Any]] = None
@@ -66,14 +70,14 @@ class UserProfileResponse(BaseModel):
     """Schema for user profile response."""
 
     id: int
-    name: str
-    email: str
-    location: str
-    rate: str
-    cv_path: str
+    cv_filename: Optional[str] = None
+    cv_text: Optional[str] = None
+    custom_instructions: Optional[str] = None
     skills: Optional[list[str]] = None
     preferences: Optional[dict[str, Any]] = None
+    ai_generated_summary: Optional[str] = None
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
@@ -86,9 +90,6 @@ class StatsResponse(BaseModel):
     new_jobs: int
     matched_jobs: int
     rejected_jobs: int
-    applied_jobs: int
-    failed_jobs: int
-    success_rate: float = Field(description="Percentage of successful applications")
 
 
 class HealthResponse(BaseModel):

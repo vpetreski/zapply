@@ -94,8 +94,7 @@ dev:
 # Development: Full local setup and run
 dev-setup:
     just db-start
-    just db-upgrade
-    @echo "✅ Database ready!"
+    @echo "✅ Database ready! (migrations run automatically on app startup)"
     @echo ""
     @echo "Now run in separate terminals:"
     @echo "  Terminal 1: just dev-backend"
@@ -207,6 +206,94 @@ health:
     @curl -s http://localhost:8000/health | python3 -m json.tool || echo "❌ Backend is not responding"
     @curl -s http://localhost:3000 > /dev/null && echo "✅ Frontend is accessible" || echo "❌ Frontend is not accessible"
     @docker compose ps postgres | grep -q "Up" && echo "✅ Database is running" || echo "❌ Database is not running"
+
+# Sync: Copy production data from NAS to local database (exact copy)
+# NOTE: Requires passwordless sudo for docker on NAS. Run `just nas-setup-sudo` first (once).
+nas-local-sync:
+    #!/usr/bin/env bash
+    set -e
+    NAS="vpetreski@192.168.0.188"
+    NAS_DOCKER="sudo /usr/local/bin/docker"
+    NAS_CONTAINER="zapply-postgres-prod"
+    echo "📥 Syncing NAS (production) → Local database..."
+    echo ""
+
+    DUMP_FILE="/tmp/zapply_nas_dump_$(date +%s).sql"
+
+    echo "1️⃣  Dumping NAS database..."
+    ssh "$NAS" "$NAS_DOCKER exec $NAS_CONTAINER pg_dump -U zapply -d zapply" > "$DUMP_FILE"
+
+    echo "2️⃣  Terminating existing connections on local..."
+    docker exec zapply-postgres psql -U zapply -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'zapply' AND pid <> pg_backend_pid();"
+
+    echo "3️⃣  Dropping and recreating local database..."
+    docker exec zapply-postgres psql -U zapply -d postgres -c "DROP DATABASE IF EXISTS zapply;"
+    docker exec zapply-postgres psql -U zapply -d postgres -c "CREATE DATABASE zapply OWNER zapply;"
+
+    echo "4️⃣  Restoring to local database..."
+    docker exec -i zapply-postgres psql -U zapply -d zapply < "$DUMP_FILE"
+
+    echo "5️⃣  Cleaning up..."
+    rm -f "$DUMP_FILE"
+
+    echo ""
+    echo "✅ Local database is now an exact copy of NAS production!"
+
+# Sync: Copy local data to NAS production database (exact copy)
+# NOTE: Requires passwordless sudo for docker on NAS. Run `just nas-setup-sudo` first (once).
+local-nas-sync:
+    #!/usr/bin/env bash
+    set -e
+    NAS="vpetreski@192.168.0.188"
+    NAS_DOCKER="sudo /usr/local/bin/docker"
+    NAS_CONTAINER="zapply-postgres-prod"
+    echo "📤 Syncing Local → NAS (production) database..."
+    echo ""
+    echo "⚠️  WARNING: This will completely replace production data on NAS!"
+    read -p "Are you sure? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        echo "Aborted."
+        exit 1
+    fi
+    echo ""
+
+    DUMP_FILE="/tmp/zapply_local_dump_$(date +%s).sql"
+
+    echo "1️⃣  Dumping local database..."
+    docker exec zapply-postgres pg_dump -U zapply -d zapply > "$DUMP_FILE"
+
+    echo "2️⃣  Terminating existing connections on NAS..."
+    ssh "$NAS" "$NAS_DOCKER exec $NAS_CONTAINER psql -U zapply -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'zapply' AND pid <> pg_backend_pid();\""
+
+    echo "3️⃣  Dropping and recreating NAS database..."
+    ssh "$NAS" "$NAS_DOCKER exec $NAS_CONTAINER psql -U zapply -d postgres -c 'DROP DATABASE IF EXISTS zapply;'"
+    ssh "$NAS" "$NAS_DOCKER exec $NAS_CONTAINER psql -U zapply -d postgres -c 'CREATE DATABASE zapply OWNER zapply;'"
+
+    echo "4️⃣  Restoring to NAS database (streaming via SSH)..."
+    cat "$DUMP_FILE" | ssh "$NAS" "$NAS_DOCKER exec -i $NAS_CONTAINER psql -U zapply -d zapply"
+
+    echo "5️⃣  Cleaning up..."
+    rm -f "$DUMP_FILE"
+
+    echo ""
+    echo "✅ NAS production database is now an exact copy of local!"
+
+# Setup: Configure passwordless sudo for docker on NAS (run once, interactive)
+nas-setup-sudo:
+    #!/usr/bin/env bash
+    set -e
+    NAS="vpetreski@192.168.0.188"
+    echo "🔧 Setting up passwordless sudo for docker on NAS..."
+    echo ""
+    echo "This will add a sudoers rule to allow running docker without password."
+    echo "You will need to enter your NAS password when prompted."
+    echo ""
+    echo "Run these commands manually on NAS (SSH in first):"
+    echo ""
+    echo "  ssh $NAS"
+    echo "  sudo sh -c 'echo \"vpetreski ALL=(ALL) NOPASSWD: /usr/local/bin/docker\" >> /etc/sudoers'"
+    echo ""
+    echo "After that, run 'just nas-local-sync' to test."
 
 # Show current status
 status:

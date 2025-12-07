@@ -5,10 +5,8 @@
         <h1>⚡ Zapply</h1>
       </RouterLink>
       <nav class="nav">
-        <RouterLink to="/">Dashboard</RouterLink>
-        <RouterLink to="/jobs">Jobs</RouterLink>
+        <RouterLink to="/">Jobs</RouterLink>
         <RouterLink to="/runs">Runs</RouterLink>
-        <RouterLink to="/stats">Statistics</RouterLink>
         <RouterLink to="/profile">Profile</RouterLink>
         <RouterLink to="/admin">Admin</RouterLink>
         <button @click="handleLogout" class="logout-btn">Logout</button>

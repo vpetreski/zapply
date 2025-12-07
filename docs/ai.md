@@ -1,167 +1,143 @@
 # Zapply - AI Context
 
 ## Current Phase
-**Phase 7: Applier Implementation** 🤖
+**Phase 8 Complete: Final UI Polish & Simplification**
 
-System fully operational. Next priority is implementing the Applier - the most critical missing piece that actually submits job applications.
+The system is polished for daily use with minimal UI, manual override controls, and streamlined profile management.
 
-**Current Branch:** `main`
+**Current Branch:** `feature/applier` (PR #8 merged to main)
 
-## Last Session - 2025-11-29 (New Mac Setup & Code Cleanup)
+## Last Session - 2025-12-07 (Final Polish Continued)
 
-### Accomplished This Session
+### What Was Done
 
-**1. New Mac Environment Setup** 💻 → ✅
+**Profile Page Simplification:**
 
-Set up development environment on new Mac:
-- Created `.env` file with all required secrets (copied from NAS production)
-- Configured Claude Code global permissions (`~/.claude/settings.json`)
+1. **Removed Basic Information Fields**
+   - Removed from model: name, email, phone, location, rate, linkedin, github
+   - Removed PDF binary storage (cv_data)
+   - Profile now only has: cv_filename, cv_text, custom_instructions, skills, preferences, ai_generated_summary
 
-**2. Environment Variable Cleanup** 🧹 → ✅
+2. **Simplified Profile UI**
+   - Removed Basic Info section from view and edit modes
+   - Edit mode: Just "Select PDF File" button + Custom Instructions textarea
+   - Save/Cancel buttons at bottom with spinner, no helper text
+   - User puts all their info (name, rate, location, preferences) in Custom Instructions
 
-#### Removed Unused Environment Variables
-- `SCRAPER_JOB_LIMIT` - was dead code, actually reads from DB via Admin UI
-- `MATCHING_COMMIT_INTERVAL` - defined but never used
-- `MATCHING_LOG_INTERVAL` - rarely changed, kept in code with default
-- Legacy user profile vars (`user_name`, `user_email`, etc.) - managed via `/profile` UI
+3. **Database Migration**
+   - Dropped 8 columns from user_profiles table
 
-#### Cleaned Up Files
-- `.env` - minimal, only required vars
-- `.env.example` - updated template
-- `.env.production.example` - updated template
-- `app/config.py` - removed dead code
+**Runs Page Simplification:**
 
-**3. AI Model Refactoring** 🤖 → ✅
+4. **Removed All Filters**
+   - Removed status and phase filter dropdowns
+   - Just "Start New Run" button remains
+   - Shows all runs, all statuses, all phases
+   - Sorted by latest first (started_at desc)
+   - Infinite scroll pagination works
 
-#### Created `app/ai_models.py`
-Centralized AI model constants per use case:
-```python
-CLAUDE_SONNET = "claude-sonnet-4-5-20250929"  # $3/$15 per MTok
-CLAUDE_OPUS = "claude-opus-4-5-20251101"      # $5/$25 per MTok
+**Scraper Enhancement:**
 
-# Per-feature assignments
-MATCHING_MODEL = CLAUDE_SONNET           # Job matching
-PROFILE_GENERATION_MODEL = CLAUDE_SONNET # CV profile generation
-APPLIER_MODEL = CLAUDE_OPUS              # Job applications (future)
-```
+5. **Working Nomads Last 7 Days Filter**
+   - Scraper now filters by "Last 7 Days" posted date automatically
+   - Shows "Last 7 Days" badge on Runs page
 
-#### Rationale
-- **Sonnet** for Matcher & Profile: Fast, cost-effective, good for structured analysis
-- **Opus** for Applier: Maximum intelligence for navigating arbitrary ATS systems
+**Previous Session Changes:**
 
-#### Files Modified
-- Created `app/ai_models.py` - centralized model constants
-- `app/services/matching_service.py` - uses `MATCHING_MODEL`
-- `app/routers/profile.py` - uses `PROFILE_GENERATION_MODEL`
-- `app/config.py` - removed `anthropic_model`
-- `app/main.py` - removed model from startup log
-- Removed `ANTHROPIC_MODEL` from all `.env` files
+- Jobs page is the landing page (removed Dashboard/Stats)
+- Simplified Jobs filters: Status, Matching (Auto/Manual), Date
+- Manual override buttons: Mark Matched, Mark Rejected, Mark Applied
+- Auto/Manual matching source tracking with badges
+- Scheduler runs at 6am Colombian time
 
 ---
 
-## Previous Sessions Summary
+## Workflow: Auto Scrape + Match, Manual Apply
 
-### Session - 2025-11-26 (Critical Login Fix & Deployment Automation)
-- Fixed production login (bcrypt hash quote handling)
-- Automated deployment file sync via GitHub Actions
-- Fixed database migration conflict
-- Confirmed matching quality ("fucking brilliant")
+```
+Scheduler (daily 6am) → Scraper (Last 7 Days jobs) → NEW jobs
+                             ↓
+                         Matcher → MATCHED / REJECTED (auto)
+                             ↓
+                       Jobs Page → User reviews jobs
+                             ↓
+                       Manual Override (optional) → MATCHED / REJECTED (manual)
+                             ↓
+                       User manually applies on job sites
+                             ↓
+                       Mark as Applied (optional tracking)
+```
 
-### Session - 2025-11-26 (Performance Optimization)
-- Scraper optimization: 80-97% faster on subsequent runs
-- Fixed jobs display issue (770 jobs visible)
-- All Claude Code Review issues resolved
-- Matching quality verified
+### User Daily Workflow
+
+1. **Morning (after 6am)**: Open Zapply Jobs page
+2. **Review**: Check MATCHED jobs from overnight scraping
+3. **Override**: Mark false positives as Rejected, or promote Rejected jobs to Matched
+4. **Apply**: Click job URL, apply manually on the job site
+5. **Track**: Click "Mark Applied" to track which jobs you've applied to
 
 ---
 
 ## Implementation Status
 
-### ✅ Phase 1-6: Complete
-- [x] Backend and frontend
-- [x] Working Nomads scraper with Playwright (optimized)
-- [x] Claude API integration for matching
-- [x] UserProfile management with AI generation
-- [x] Real-time dashboard and scheduler
-- [x] Production deployment to NAS (24/7)
-- [x] Environment cleanup and AI model refactoring
+### ✅ Complete
+- [x] FastAPI backend with async SQLAlchemy
+- [x] Working Nomads scraper (Last 7 Days filter)
+- [x] Claude API integration for matching (Sonnet model)
+- [x] Simplified UserProfile (CV + Custom Instructions only)
+- [x] Real-time Vue.js Jobs page with filters
+- [x] APScheduler for daily scheduling (6am Colombian time)
+- [x] Production deployment on Synology NAS
+- [x] Simplified status workflow (NEW/MATCHED/REJECTED)
+- [x] Manual override buttons (Match/Reject/Applied)
+- [x] Auto/Manual matching source tracking
+- [x] Date-based filtering (7/15/30 days)
+- [x] Runs page with infinite scroll
 
-### 🎯 Phase 7: Applier Implementation (NEXT PRIORITY)
-The most critical missing piece - actually submitting job applications!
-
-**Requirements:**
-- [ ] Playwright + Claude Opus for intelligent form filling
-- [ ] Navigate arbitrary ATS systems (Greenhouse, Lever, Workday, etc.)
-- [ ] Fill forms intelligently based on user profile
-- [ ] Handle custom questions with AI
-- [ ] Upload resume/CV
-- [ ] Mark jobs as APPLIED/FAILED with details
-- [ ] Screenshot on failure for debugging
-- [ ] Test with real applications (supervised)
-
-**Architecture:**
-```
-MATCHED Job → Applier →
-  1. Open job URL
-  2. Find "Apply" button
-  3. Navigate application flow
-  4. Fill forms (AI-powered)
-  5. Answer custom questions (AI)
-  6. Submit application
-  7. Update job status → APPLIED/FAILED
-```
-
-**Model:** Uses `APPLIER_MODEL` (Claude Opus 4.5) for maximum intelligence
-
-### 📋 Phase 8: External Access (Low Priority)
-- [ ] Configure zapply.dev domain
-- [ ] Set up nginx reverse proxy with SSL
-- [ ] Router port forwarding
-
----
-
-## Decisions Log
-
-### AI Model Strategy (2025-11-29)
-- **Hardcoded models per feature** instead of env var
-- **Sonnet** for Matcher/Profile (cost-effective, fast)
-- **Opus** for Applier (maximum intelligence needed)
-- Models defined in `app/ai_models.py` for easy updates
-
-### Technology Stack
-- Python 3.12, FastAPI, uv
-- Vue.js 3 frontend with dark theme
-- PostgreSQL, Playwright
-- Claude API (Sonnet for matching, Opus for applying)
-- Docker on Synology NAS
-
----
-
-## Access URLs
-
-- **NAS Frontend**: http://192.168.0.188:3000/
-- **NAS API**: http://192.168.0.188:8000/docs
-- **Local Dev**: http://localhost:3000/, http://localhost:8000/docs
+### ❌ Removed (By Design)
+- ~~Dashboard page~~ - Jobs is the landing page
+- ~~Statistics page~~ - Simplified to just Jobs view
+- ~~Profile basic info fields~~ - All info goes in Custom Instructions
+- ~~PDF storage in database~~ - Not needed
+- ~~Runs page filters~~ - Shows all runs
+- ~~Automated Applier~~ - Removed due to ATS compatibility
 
 ---
 
 ## Key Files
 
-- `app/ai_models.py` - AI model constants per feature
-- `app/services/matching_service.py` - Job matching logic
-- `app/routers/profile.py` - Profile generation
-- `app/applier/applier.py` - Applier (to be implemented)
-- `docs/ai.md` - This file (AI context)
-- `CLAUDE.md` - Claude Code instructions
+- `app/ai_models.py` - AI model constants (CLAUDE_SONNET)
+- `app/models.py` - Job model with matching_source, simplified UserProfile
+- `app/matcher/matcher.py` - Job matching logic
+- `app/scraper/working_nomads.py` - Scraper with Last 7 Days filter
+- `app/routers/jobs.py` - Jobs API with filtering and manual override
+- `app/routers/profile.py` - Simplified profile endpoints
+- `app/services/scheduler_service.py` - Daily scheduler at 6am
+- `frontend/src/views/Jobs.vue` - Main job review page
+- `frontend/src/views/ProfileView.vue` - Simplified profile page
+- `frontend/src/views/Runs.vue` - Runs page (no filters)
 
 ---
 
-**Last Updated:** 2025-11-29 by Claude Code
+## Architecture
 
-**Next Session Priority:**
-1. **Implement Applier** - The most critical missing feature
-2. Design the application flow architecture
-3. Start with a single ATS (e.g., Greenhouse) as MVP
-4. Test with real applications (supervised)
+### AI Models
+- **Matching**: Claude Sonnet 4.5
+- **Profile Generation**: Claude Sonnet 4.5
 
-**GitHub:** https://github.com/vpetreski/zapply (private)
+### Database
+- PostgreSQL with async SQLAlchemy
+- Job statuses: NEW → MATCHED/REJECTED
+- Matching source: auto (AI) / manual (user override)
+- UserProfile: cv_filename, cv_text, custom_instructions, skills, preferences, ai_generated_summary
+
+### Deployment
+- Docker Compose on Synology NAS
+- Traefik reverse proxy
+- PostgreSQL in container
+
+---
+
+**Last Updated:** 2025-12-07 by Claude Code
+
+**Status:** Production ready - minimal UI, auto scrape/match at 6am, manual review and apply

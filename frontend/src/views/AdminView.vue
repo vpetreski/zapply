@@ -3,17 +3,17 @@
     <!-- Profile Warning Banner -->
     <ProfileWarningBanner />
 
-    <h1>🔧 Admin</h1>
+    <h1>Admin</h1>
 
     <!-- Settings -->
     <section class="admin-section">
-      <h2>⚙️ Settings</h2>
+      <h2>Settings</h2>
 
       <div class="setting-item">
         <label for="run-frequency" class="setting-label">
           <span class="label-text">Run Frequency</span>
-          <span class="label-description">Configure how often the automation pipeline runs (scraping, matching, applying)</span>
-          <span class="label-tip">💡 Recommended: Daily for production use</span>
+          <span class="label-description">Configure how often the automation pipeline runs (scraping, matching)</span>
+          <span class="label-tip">Recommended: Daily for production use</span>
         </label>
         <select
           id="run-frequency"
@@ -24,7 +24,7 @@
           style="padding-right: 3rem;"
         >
           <option value="manual">Manual</option>
-          <option value="daily">Daily (9pm Colombian time)</option>
+          <option value="daily">Daily (6am Colombian time)</option>
           <option value="hourly">Hourly (at the start of every hour)</option>
         </select>
       </div>
@@ -37,7 +37,7 @@
         <label for="scrape-limit" class="setting-label">
           <span class="label-text">Scrape Job Limit</span>
           <span class="label-description">Limit the number of jobs scraped per run (useful for testing to reduce cost and time)</span>
-          <span class="label-tip">💡 Recommended: Unlimited for production use</span>
+          <span class="label-tip">Recommended: Unlimited for production use</span>
         </label>
         <select
           id="scrape-limit"
@@ -58,134 +58,13 @@
         {{ limitResult.message }}
       </div>
     </section>
-
-    <!-- Database Cleanup -->
-    <section class="admin-section danger-zone">
-      <h2>🗑️ Database Cleanup</h2>
-
-      <!-- Database Statistics -->
-      <div class="db-stats-box">
-        <h3>📊 Current Database State</h3>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">Jobs</div>
-            <div class="stat-value">{{ dbStats.jobs.toLocaleString() }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Runs</div>
-            <div class="stat-value">{{ dbStats.runs.toLocaleString() }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Application Logs</div>
-            <div class="stat-value">{{ dbStats.application_logs.toLocaleString() }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">User Profiles</div>
-            <div class="stat-value">{{ dbStats.user_profiles.toLocaleString() }}</div>
-          </div>
-        </div>
-        <p class="auto-refresh-note">📡 Auto-refreshes every 5 seconds</p>
-      </div>
-
-      <p class="warning-text">
-        ⚠️ Warning: This will permanently delete data!
-      </p>
-
-      <div class="cleanup-buttons">
-        <div class="cleanup-button-group">
-          <button @click="confirmDeleteAllData" class="btn-danger-outline" :disabled="loading || isDataEmpty">
-            🗑️ Delete All Data
-          </button>
-          <p class="button-description">
-            Deletes all Jobs ({{ dbStats.jobs }}), Runs ({{ dbStats.runs }}), and Application Logs ({{ dbStats.application_logs }})
-          </p>
-        </div>
-
-        <div class="cleanup-button-group danger-group">
-          <button @click="confirmDeleteProfiles" class="btn-danger" :disabled="loading || dbStats.user_profiles === 0">
-            ⚠️ Delete User Profiles
-          </button>
-          <p class="button-description danger-text">
-            Deletes User Profiles ({{ dbStats.user_profiles }}) - Use with extreme caution!
-          </p>
-        </div>
-      </div>
-
-      <!-- Result message -->
-      <div v-if="cleanupResult" class="result-message" :class="cleanupResult.success ? 'success' : 'error'">
-        {{ cleanupResult.message }}
-      </div>
-    </section>
   </div>
-
-  <!-- Profile Warning Dialog (shown first if deleting profiles) -->
-  <ConfirmDialog
-    v-model:isOpen="showProfileWarningDialog"
-    title="Delete User Profiles?"
-    message="You are about to delete User Profiles! This will remove all user profile data including CVs, skills, and preferences. This is a critical operation. Are you absolutely sure?"
-    confirmText="Yes, Continue"
-    cancelText="Cancel"
-    variant="danger"
-    @confirm="handleProfileWarningConfirm"
-  />
-
-  <!-- Cleanup Confirmation Dialog -->
-  <ConfirmDialog
-    v-model:isOpen="showCleanupDialog"
-    title="Confirm Database Cleanup"
-    :message="`Are you sure you want to delete: ${selectedOptionsText}?\n\nThis action cannot be undone!`"
-    confirmText="Delete Data"
-    cancelText="Cancel"
-    processingText="Deleting..."
-    variant="danger"
-    @confirm="handleCleanupConfirm"
-  />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
-
-interface DatabaseStats {
-  jobs: number
-  runs: number
-  application_logs: number
-  user_profiles: number
-}
-
-interface CleanupOptions {
-  clean_jobs: boolean
-  clean_runs: boolean
-  clean_application_logs: boolean
-  clean_user_profiles: boolean
-}
-
-interface CleanupResult {
-  success: boolean
-  message: string
-  deleted_counts: Record<string, number>
-}
-
-const loading = ref(false)
-const dbStats = ref<DatabaseStats>({
-  jobs: 0,
-  runs: 0,
-  application_logs: 0,
-  user_profiles: 0
-})
-
-const cleanupOptions = ref<CleanupOptions>({
-  clean_jobs: false,
-  clean_runs: false,
-  clean_application_logs: false,
-  clean_user_profiles: false
-})
-
-const cleanupResult = ref<CleanupResult | null>(null)
-const showCleanupDialog = ref(false)
-const showProfileWarningDialog = ref(false)
 
 const runFrequency = ref<string>('manual')
 const savingFrequency = ref(false)
@@ -194,19 +73,6 @@ const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
 const scrapeLimit = ref<number>(0)
 const savingLimit = ref(false)
 const limitResult = ref<{ success: boolean; message: string } | null>(null)
-
-const isDataEmpty = computed(() => {
-  return dbStats.value.jobs === 0 && dbStats.value.runs === 0 && dbStats.value.application_logs === 0
-})
-
-const selectedOptionsText = computed(() => {
-  const selected = []
-  if (cleanupOptions.value.clean_jobs) selected.push('Jobs')
-  if (cleanupOptions.value.clean_runs) selected.push('Runs')
-  if (cleanupOptions.value.clean_application_logs) selected.push('Application Logs')
-  if (cleanupOptions.value.clean_user_profiles) selected.push('⚠️ User Profiles')
-  return selected.join(', ')
-})
 
 async function loadRunFrequency() {
   try {
@@ -227,7 +93,7 @@ async function saveRunFrequency() {
     })
     frequencyResult.value = {
       success: true,
-      message: `✓ Run frequency set to: ${runFrequency.value}`
+      message: `Run frequency set to: ${runFrequency.value}`
     }
     // Clear success message after 3 seconds
     setTimeout(() => {
@@ -263,7 +129,7 @@ async function saveScrapeLimit() {
     const limitText = scrapeLimit.value === 0 ? 'Unlimited' : `${scrapeLimit.value} jobs`
     limitResult.value = {
       success: true,
-      message: `✓ Scrape limit set to: ${limitText}`
+      message: `Scrape limit set to: ${limitText}`
     }
     // Clear success message after 3 seconds
     setTimeout(() => {
@@ -279,98 +145,9 @@ async function saveScrapeLimit() {
   }
 }
 
-async function loadDatabaseStats() {
-  loading.value = true
-  try {
-    const response = await axios.get('/api/admin/database-stats')
-    dbStats.value = response.data
-  } catch (error) {
-    console.error('Failed to load database stats:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-function confirmDeleteAllData() {
-  if (isDataEmpty.value) return
-
-  // Set options to delete jobs, runs, and logs
-  cleanupOptions.value = {
-    clean_jobs: true,
-    clean_runs: true,
-    clean_application_logs: true,
-    clean_user_profiles: false
-  }
-  showCleanupDialog.value = true
-}
-
-function confirmDeleteProfiles() {
-  if (dbStats.value.user_profiles === 0) return
-
-  // Set options to only delete profiles
-  cleanupOptions.value = {
-    clean_jobs: false,
-    clean_runs: false,
-    clean_application_logs: false,
-    clean_user_profiles: true
-  }
-  showProfileWarningDialog.value = true
-}
-
-function handleProfileWarningConfirm() {
-  showProfileWarningDialog.value = false
-  showCleanupDialog.value = true
-}
-
-async function handleCleanupConfirm() {
-  loading.value = true
-  cleanupResult.value = null
-
-  try {
-    const response = await axios.post('/api/admin/cleanup', cleanupOptions.value)
-    cleanupResult.value = response.data
-
-    if (response.data.success) {
-      // Reset checkboxes
-      cleanupOptions.value = {
-        clean_jobs: false,
-        clean_runs: false,
-        clean_application_logs: false,
-        clean_user_profiles: false
-      }
-      // Reload stats
-      await loadDatabaseStats()
-    }
-    showCleanupDialog.value = false
-  } catch (error: any) {
-    cleanupResult.value = {
-      success: false,
-      message: error.response?.data?.detail || 'Cleanup failed',
-      deleted_counts: {}
-    }
-    showCleanupDialog.value = false
-  } finally {
-    loading.value = false
-  }
-}
-
-// Auto-refresh interval
-let refreshInterval: number | null = null
-
 onMounted(() => {
   loadRunFrequency()
   loadScrapeLimit()
-  loadDatabaseStats()
-  // Auto-refresh stats every 5 seconds
-  refreshInterval = setInterval(() => {
-    loadDatabaseStats()
-  }, 5000)
-})
-
-onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
 })
 </script>
 
@@ -469,178 +246,6 @@ h1 {
 .setting-select option {
   background: #2a2a2a;
   color: #e0e0e0;
-}
-
-/* Database Stats Box */
-.db-stats-box {
-  background: #2a2a2a;
-  border-radius: 6px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  border: 1px solid #404040;
-}
-
-.db-stats-box h3 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  color: #4a9eff;
-  font-size: 1.1rem;
-}
-
-.auto-refresh-note {
-  text-align: center;
-  color: #888;
-  font-size: 0.85rem;
-  margin-top: 1rem;
-  margin-bottom: 0;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
-  margin-bottom: 0;
-}
-
-.stat-card {
-  background: #2a2a2a;
-  padding: 1rem;
-  border-radius: 6px;
-  text-align: center;
-  border: 1px solid #404040;
-}
-
-.stat-label {
-  font-size: 0.85rem;
-  color: #888;
-  margin-bottom: 0.5rem;
-}
-
-.stat-value {
-  font-size: 1.8rem;
-  font-weight: bold;
-  color: #4a9eff;
-}
-
-/* Danger Zone */
-.danger-zone {
-  border-color: #ff4444;
-  background: #1a1515;
-}
-
-.warning-text {
-  color: #ff9999;
-  font-weight: bold;
-  margin-bottom: 1.5rem;
-  padding: 0.75rem;
-  background: #2a1a1a;
-  border-radius: 4px;
-  border-left: 4px solid #ff4444;
-}
-
-.cleanup-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.cleanup-button-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 1.25rem;
-  background: #2a2a2a;
-  border-radius: 6px;
-  border: 1px solid #404040;
-  transition: border-color 0.2s;
-}
-
-.cleanup-button-group:hover {
-  border-color: #555;
-}
-
-.cleanup-button-group.danger-group {
-  background: #2a1a1a;
-  border-color: #ff4444;
-}
-
-.cleanup-button-group.danger-group:hover {
-  border-color: #ff6666;
-}
-
-.cleanup-button-group button {
-  align-self: flex-start;
-}
-
-.button-description {
-  font-size: 0.85rem;
-  color: #888;
-  margin: 0;
-  line-height: 1.4;
-}
-
-.btn-danger {
-  background: #ff4444;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: bold;
-  transition: background 0.2s;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #ff6666;
-}
-
-.btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-danger-outline {
-  background: transparent;
-  color: #ff6666;
-  border: 2px solid #ff4444;
-  padding: 0.75rem 1.5rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: bold;
-  transition: all 0.2s;
-}
-
-.btn-danger-outline:hover:not(:disabled) {
-  background: #ff4444;
-  color: white;
-}
-
-.btn-danger-outline:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #404040;
-  color: white;
-  border: none;
-  padding: 0.6rem 1.2rem;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background 0.2s;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #555;
-}
-
-.btn-secondary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .result-message {

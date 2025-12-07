@@ -25,6 +25,3 @@ MATCHING_MODEL = CLAUDE_SONNET
 # Sonnet handles JSON extraction well
 PROFILE_GENERATION_MODEL = CLAUDE_SONNET
 
-# Job application (Applier) - complex reasoning for navigating ATS
-# Opus for handling arbitrary forms and custom questions intelligently
-APPLIER_MODEL = CLAUDE_OPUS

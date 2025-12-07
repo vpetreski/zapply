@@ -5,35 +5,17 @@
 
     <div class="runs-header">
       <h2>Pipeline Runs ({{ total }} total)</h2>
-      <div class="header-actions">
-        <button
-          @click="startNewRun"
-          :disabled="!profileExists || hasRunningRun || startingRun"
-          class="btn btn-primary start-run-btn"
-          :title="!profileExists ? 'Create a profile first' : ''"
-        >
-          <span v-if="!profileExists">Profile Required</span>
-          <span v-else-if="startingRun">Starting...</span>
-          <span v-else-if="hasRunningRun">Run In Progress</span>
-          <span v-else>▶ Start New Run</span>
-        </button>
-        <div class="filters">
-        <select v-model="statusFilter" @change="resetAndFetch" class="filter-select">
-          <option value="">All Statuses</option>
-          <option value="running">Running</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
-          <option value="partial">Partial</option>
-        </select>
-        <select v-model="phaseFilter" @change="resetAndFetch" class="filter-select">
-          <option value="">All Phases</option>
-          <option value="scraping">Scraping</option>
-          <option value="matching">Matching</option>
-          <option value="applying">Applying</option>
-          <option value="reporting">Reporting</option>
-        </select>
-        </div>
-      </div>
+      <button
+        @click="startNewRun"
+        :disabled="!profileExists || hasRunningRun || startingRun"
+        class="btn btn-primary start-run-btn"
+        :title="!profileExists ? 'Create a profile first' : ''"
+      >
+        <span v-if="!profileExists">Profile Required</span>
+        <span v-else-if="startingRun">Starting...</span>
+        <span v-else-if="hasRunningRun">Run In Progress</span>
+        <span v-else>Start New Run</span>
+      </button>
     </div>
 
     <div v-if="loading" class="loading">Loading runs...</div>
@@ -52,6 +34,7 @@
                 <span :class="['badge', `badge-${run.status}`]">{{ run.status }}</span>
                 <span :class="['badge', `badge-phase-${run.phase}`]">{{ run.phase }}</span>
                 <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(run.trigger_type) }}</span>
+                <span class="badge badge-filter">Last 7 Days</span>
               </div>
             </div>
             <div class="run-times">
@@ -99,6 +82,7 @@
               <span :class="['badge', `badge-${selectedRun.status}`]">{{ selectedRun.status }}</span>
               <span :class="['badge', `badge-phase-${selectedRun.phase}`]">{{ selectedRun.phase }}</span>
               <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(selectedRun.trigger_type) }}</span>
+              <span class="badge badge-filter">Last 7 Days</span>
             </div>
           </div>
           <button @click="closeRunDetail" class="btn-close">×</button>
@@ -182,8 +166,6 @@ import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 const runs = ref([])
 const loading = ref(true)
 const loadingMore = ref(false)
-const statusFilter = ref('')
-const phaseFilter = ref('')
 const selectedRun = ref(null)
 const startingRun = ref(false)
 const autoScrollEnabled = ref(false)
@@ -221,12 +203,6 @@ const fetchRuns = async (append = false) => {
       page: currentPage.value,
       page_size: pageSize.value
     }
-    if (statusFilter.value) {
-      params.status = statusFilter.value
-    }
-    if (phaseFilter.value) {
-      params.phase = phaseFilter.value
-    }
     const response = await axios.get('/api/runs', { params })
 
     if (append) {
@@ -260,10 +236,10 @@ const handleScroll = () => {
   }
 }
 
-const resetAndFetch = () => {
+const resetAndFetch = async () => {
   currentPage.value = 1
   runs.value = []
-  fetchRuns()
+  await fetchRuns()
 }
 
 const openRunDetail = (run) => {
@@ -510,12 +486,6 @@ onUnmounted(() => {
   font-size: 2rem;
 }
 
-.header-actions {
-  display: flex;
-  gap: 1.5rem;
-  align-items: center;
-}
-
 .start-run-btn {
   padding: 0.625rem 1.25rem;
   font-size: 0.875rem;
@@ -529,20 +499,6 @@ onUnmounted(() => {
 .start-run-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.filters {
-  display: flex;
-  gap: 1rem;
-}
-
-.filter-select {
-  padding: 0.5rem 1rem;
-  background-color: var(--bg-darker);
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  color: var(--text);
-  font-size: 0.875rem;
 }
 
 .loading, .empty {
@@ -647,11 +603,6 @@ onUnmounted(() => {
   color: #c084fc;
 }
 
-.badge-phase-applying {
-  background-color: rgba(34, 197, 94, 0.2);
-  color: #86efac;
-}
-
 .badge-phase-reporting {
   background-color: rgba(251, 191, 36, 0.2);
   color: #fcd34d;
@@ -661,6 +612,12 @@ onUnmounted(() => {
 .badge-trigger {
   background-color: rgba(100, 116, 139, 0.2);
   color: #94a3b8;
+}
+
+/* Filter badge */
+.badge-filter {
+  background-color: rgba(6, 182, 212, 0.2);
+  color: #67e8f9;
 }
 
 /* Infinite Scroll */
