@@ -1,11 +1,10 @@
 """User profile management endpoints."""
 
-import base64
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
 import anthropic
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -27,13 +26,6 @@ class ProfileResponse(BaseModel):
     """User profile response."""
 
     id: int
-    name: str
-    email: str
-    phone: Optional[str]
-    location: str
-    rate: str
-    linkedin: Optional[str]
-    github: Optional[str]
     cv_filename: Optional[str]
     cv_text: Optional[str]
     custom_instructions: Optional[str]
@@ -55,13 +47,6 @@ class GenerateProfileRequest(BaseModel):
 
     cv_text: str
     custom_instructions: str
-    name: str
-    email: str
-    phone: Optional[str]
-    location: str
-    rate: str
-    linkedin: Optional[str]
-    github: Optional[str]
 
 
 class GenerateProfileResponse(BaseModel):
@@ -76,15 +61,7 @@ class GenerateProfileResponse(BaseModel):
 class UpdateProfileRequest(BaseModel):
     """Request to update profile."""
 
-    name: str
-    email: str
-    phone: Optional[str]
-    location: str
-    rate: str
-    linkedin: Optional[str]
-    github: Optional[str]
     cv_filename: Optional[str]
-    cv_data_base64: Optional[str]  # Base64 encoded PDF file
     cv_text: str
     custom_instructions: Optional[str]
     skills: list[str]
@@ -126,13 +103,6 @@ async def get_profile(
 
     return ProfileResponse(
         id=profile.id,
-        name=profile.name,
-        email=profile.email,
-        phone=profile.phone,
-        location=profile.location,
-        rate=profile.rate,
-        linkedin=profile.linkedin,
-        github=profile.github,
         cv_filename=profile.cv_filename,
         cv_text=profile.cv_text,
         custom_instructions=profile.custom_instructions,
@@ -170,17 +140,10 @@ async def generate_profile(
 **CUSTOM INSTRUCTIONS FROM USER:**
 {profile_request.custom_instructions}
 
-**USER DETAILS:**
-- Name: {profile_request.name}
-- Email: {profile_request.email}
-- Phone: {profile_request.phone or 'Not provided'}
-- Location: {profile_request.location}
-- Rate: {profile_request.rate}
-
 **YOUR TASK:**
 Analyze the CV and custom instructions to create an optimized profile for AI-powered job matching.
 
-The custom instructions contain ALL user preferences, requirements, and constraints. Pay close attention to them.
+The custom instructions contain ALL user preferences, requirements, and constraints including name, location, rate, etc. Pay close attention to them.
 
 Generate:
 
@@ -193,8 +156,6 @@ Respond in this exact JSON format:
   "cv_text": "<optimized profile text - comprehensive, well-structured, highlights key strengths>",
   "skills": ["skill1", "skill2", ...],
   "preferences": {{
-    "rate": "{profile_request.rate}",
-    "location": "{profile_request.location}",
     "key_requirements": ["requirement1", "requirement2", ...],
     "preferred_industries": ["Industry1", "Industry2", ...],
     "preferred_roles": ["Role1", "Role2", ...]
@@ -253,49 +214,6 @@ Respond in this exact JSON format:
         )
 
 
-@router.post("/upload-cv")
-async def upload_cv(
-    current_user: Annotated[User, Depends(get_current_user)],
-    file: UploadFile = File(...),
-) -> dict:
-    """
-    Upload CV file (PDF) and extract text.
-
-    Returns extracted text and base64 encoded file to be used in profile generation.
-    """
-    if not file.filename or not file.filename.endswith('.pdf'):
-        raise HTTPException(
-            status_code=400,
-            detail="Only PDF files are supported"
-        )
-
-    try:
-        # Read PDF content
-        content = await file.read()
-
-        # TODO: Extract text from PDF using pypdf or similar
-        # For now, return a placeholder
-        # In production, use: from pypdf import PdfReader
-        extracted_text = f"[PDF content from {file.filename}]\n\nTODO: Implement PDF text extraction"
-
-        # Encode as base64 for transmission
-        file_base64 = base64.b64encode(content).decode('utf-8')
-
-        return {
-            "success": True,
-            "filename": file.filename,
-            "text": extracted_text,
-            "size": len(content),
-            "file_data": file_base64
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to process PDF: {str(e)}"
-        )
-
-
 @router.put("", response_model=ProfileResponse)
 async def update_profile(
     request: UpdateProfileRequest,
@@ -311,30 +229,10 @@ async def update_profile(
     result = await db.execute(select(UserProfile).limit(1))
     profile = result.scalar_one_or_none()
 
-    # Decode CV data if provided
-    cv_data = None
-    if request.cv_data_base64:
-        try:
-            cv_data = base64.b64decode(request.cv_data_base64)
-        except Exception as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid CV data encoding: {str(e)}"
-            )
-
     if profile:
         # Update existing profile
-        profile.name = request.name
-        profile.email = request.email
-        profile.phone = request.phone
-        profile.location = request.location
-        profile.rate = request.rate
-        profile.linkedin = request.linkedin
-        profile.github = request.github
         if request.cv_filename:
             profile.cv_filename = request.cv_filename
-        if cv_data:
-            profile.cv_data = cv_data
         profile.cv_text = request.cv_text
         profile.custom_instructions = request.custom_instructions
         profile.skills = request.skills
@@ -344,15 +242,7 @@ async def update_profile(
     else:
         # Create new profile
         profile = UserProfile(
-            name=request.name,
-            email=request.email,
-            phone=request.phone,
-            location=request.location,
-            rate=request.rate,
-            linkedin=request.linkedin,
-            github=request.github,
             cv_filename=request.cv_filename,
-            cv_data=cv_data,
             cv_text=request.cv_text,
             custom_instructions=request.custom_instructions,
             skills=request.skills,
@@ -366,13 +256,6 @@ async def update_profile(
 
     return ProfileResponse(
         id=profile.id,
-        name=profile.name,
-        email=profile.email,
-        phone=profile.phone,
-        location=profile.location,
-        rate=profile.rate,
-        linkedin=profile.linkedin,
-        github=profile.github,
         cv_filename=profile.cv_filename,
         cv_text=profile.cv_text,
         custom_instructions=profile.custom_instructions,

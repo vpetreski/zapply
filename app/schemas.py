@@ -70,14 +70,14 @@ class UserProfileResponse(BaseModel):
     """Schema for user profile response."""
 
     id: int
-    name: str
-    email: str
-    location: str
-    rate: str
-    cv_path: str
+    cv_filename: Optional[str] = None
+    cv_text: Optional[str] = None
+    custom_instructions: Optional[str] = None
     skills: Optional[list[str]] = None
     preferences: Optional[dict[str, Any]] = None
+    ai_generated_summary: Optional[str] = None
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
