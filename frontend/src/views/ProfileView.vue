@@ -1,6 +1,16 @@
 <template>
   <div class="profile-container">
-    <h1>Profile</h1>
+    <div class="page-header">
+      <h1>{{ editMode ? 'Edit Profile' : 'Profile' }}</h1>
+      <div v-if="!editMode && profile" class="action-buttons">
+        <button @click="startEdit" class="btn-primary">
+          Edit Profile
+        </button>
+        <button @click="confirmDelete" class="btn-danger-outline">
+          Delete
+        </button>
+      </div>
+    </div>
 
     <!-- Loading State -->
     <div v-if="loading && !profile" class="loading">
@@ -18,28 +28,6 @@
 
     <!-- View Mode -->
     <div v-else-if="!editMode && profile" class="profile-view">
-      <!-- Header with actions -->
-      <section class="profile-section">
-        <div class="section-header">
-          <h2>Profile</h2>
-          <div class="action-buttons">
-            <button @click="startEdit" class="btn-primary">
-              Edit Profile
-            </button>
-            <button @click="confirmDelete" class="btn-danger-outline">
-              Delete
-            </button>
-          </div>
-        </div>
-
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">CV File:</span>
-            <span class="info-value">{{ profile.cv_filename || 'Not uploaded' }}</span>
-          </div>
-        </div>
-      </section>
-
       <!-- Custom Instructions -->
       <section class="profile-section">
         <h2>Custom Instructions</h2>
@@ -89,31 +77,23 @@
 
     <!-- Edit / Create Mode -->
     <div v-else class="profile-edit">
-      <h2>{{ profile ? 'Edit Profile' : 'Create Profile' }}</h2>
-
       <!-- CV Selection -->
-      <section class="profile-section">
-        <h3>CV (PDF)</h3>
-        <div class="upload-section">
-          <button @click="$refs.fileInput.click()" class="btn-secondary">
-            {{ uploadedFile ? 'Change PDF' : 'Select PDF File' }}
-          </button>
-          <input
-            type="file"
-            accept=".pdf"
-            @change="handleFileUpload"
-            ref="fileInput"
-            style="display: none"
-          />
-          <span v-if="uploadedFile" class="file-info">
-            <span class="file-name">{{ uploadedFile.name }}</span>
-            <span class="file-size">({{ formatFileSize(uploadedFile.size) }})</span>
-          </span>
-          <span v-else-if="profile?.cv_filename" class="file-name file-not-selected">
-            Current: {{ profile.cv_filename }} (select to update)
-          </span>
-        </div>
-      </section>
+      <div class="upload-section">
+        <button @click="$refs.fileInput.click()" class="btn-secondary">
+          Select PDF File
+        </button>
+        <input
+          type="file"
+          accept=".pdf"
+          @change="handleFileUpload"
+          ref="fileInput"
+          style="display: none"
+        />
+        <span v-if="uploadedFile" class="file-info">
+          <span class="file-name">{{ uploadedFile.name }}</span>
+          <span class="file-size">({{ formatFileSize(uploadedFile.size) }})</span>
+        </span>
+      </div>
 
       <!-- Custom Instructions -->
       <section class="profile-section">
@@ -138,24 +118,19 @@
       </section>
 
       <!-- Save Actions -->
-      <section class="profile-section save-section">
-        <div class="action-buttons">
-          <button
-            @click="saveAllChanges"
-            class="btn-primary btn-large"
-            :disabled="saving || !canGenerate"
-          >
-            <span v-if="saving" class="saving-spinner"></span>
-            {{ saving ? 'Generating...' : 'Save' }}
-          </button>
-          <button @click="cancelEdit" class="btn-secondary" :disabled="saving">
-            Cancel
-          </button>
-        </div>
-        <div v-if="!canGenerate && !saving" class="validation-message">
-          Select CV and add custom instructions to continue
-        </div>
-      </section>
+      <div class="action-buttons bottom-actions">
+        <button
+          @click="saveAllChanges"
+          class="btn-primary"
+          :disabled="saving || !canGenerate"
+        >
+          <span v-if="saving" class="saving-spinner"></span>
+          {{ saving ? 'Saving...' : 'Save' }}
+        </button>
+        <button @click="cancelEdit" class="btn-secondary" :disabled="saving">
+          Cancel
+        </button>
+      </div>
 
       <!-- Error Message -->
       <div v-if="error" class="error-message">
@@ -378,8 +353,15 @@ onMounted(() => {
   margin: 0 auto;
 }
 
-h1 {
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 2rem;
+}
+
+h1 {
+  margin: 0;
   color: #e0e0e0;
 }
 
@@ -612,16 +594,16 @@ h1 {
   border-color: #ff6666;
 }
 
-.btn-large {
-  padding: 1rem 2rem;
-  font-size: 1.1rem;
-}
-
 .upload-section {
   display: flex;
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.bottom-actions {
+  margin-top: 2rem;
 }
 
 .file-info {
@@ -641,10 +623,6 @@ h1 {
   font-size: 0.85rem;
 }
 
-.file-not-selected {
-  color: #888;
-}
-
 .custom-instructions-textarea {
   width: 100%;
   background: #0a0a0a;
@@ -662,17 +640,6 @@ h1 {
 .custom-instructions-textarea:focus {
   outline: none;
   border-color: #4a9eff;
-}
-
-.save-section {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.validation-message {
-  color: #888;
-  font-size: 0.9rem;
 }
 
 .saving-spinner {
