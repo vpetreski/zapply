@@ -62,13 +62,13 @@ class WorkingNomadsScraper(BaseScraper):
             return False
 
     async def _set_filters(self) -> None:
-        """Set job filters: Development category + Anywhere,Colombia locations."""
+        """Set job filters: Development category + Anywhere,Colombia locations + Last 7 Days."""
         if not self.page:
             return
 
-        log_to_console("🔍 Setting filters (Development + Anywhere,Colombia)...")
+        log_to_console("🔍 Setting filters (Development + Anywhere,Colombia + Last 7 Days)...")
 
-        filter_url = f"{self.jobs_url}?category=development&location=anywhere,colombia"
+        filter_url = f"{self.jobs_url}?category=development&location=anywhere,colombia&postedDate=7"
         await self.page.goto(filter_url, wait_until="networkidle")
 
         log_to_console("✅ Filters applied!")
@@ -206,7 +206,7 @@ class WorkingNomadsScraper(BaseScraper):
 
         try:
             # Navigate to job detail page with filters to maintain context
-            job_url = f"{self.jobs_url}?category=development&location=anywhere,colombia&job={slug}"
+            job_url = f"{self.jobs_url}?category=development&location=anywhere,colombia&postedDate=7&job={slug}"
             await self.page.goto(job_url, wait_until="networkidle")
             await self.page.wait_for_timeout(500)
 
@@ -325,7 +325,7 @@ class WorkingNomadsScraper(BaseScraper):
 
             # Set filters
             if progress_callback:
-                await progress_callback("Applying filters (Development + Anywhere,Colombia)...", "info")
+                await progress_callback("Applying filters (Development + Anywhere,Colombia + Last 7 Days)...", "info")
             await self._set_filters()
 
             # Load jobs (respecting limit from the start)
