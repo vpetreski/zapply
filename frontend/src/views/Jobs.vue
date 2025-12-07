@@ -316,6 +316,7 @@ const markAsApplied = async (job) => {
     const now = new Date().toISOString()
     const response = await axios.patch(`/api/jobs/${job.id}/status`, {
       status: 'matched',
+      matching_source: 'manual',
       application_data: { manually_marked: true, marked_at: now }
     })
     // Update the job in the list
