@@ -223,14 +223,17 @@ nas-local-sync:
     echo "1️⃣  Dumping NAS database..."
     ssh "$NAS" "$NAS_DOCKER exec $NAS_CONTAINER pg_dump -U zapply -d zapply" > "$DUMP_FILE"
 
-    echo "2️⃣  Dropping and recreating local database..."
+    echo "2️⃣  Terminating existing connections on local..."
+    docker exec zapply-postgres psql -U zapply -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'zapply' AND pid <> pg_backend_pid();"
+
+    echo "3️⃣  Dropping and recreating local database..."
     docker exec zapply-postgres psql -U zapply -d postgres -c "DROP DATABASE IF EXISTS zapply;"
     docker exec zapply-postgres psql -U zapply -d postgres -c "CREATE DATABASE zapply OWNER zapply;"
 
-    echo "3️⃣  Restoring to local database..."
+    echo "4️⃣  Restoring to local database..."
     docker exec -i zapply-postgres psql -U zapply -d zapply < "$DUMP_FILE"
 
-    echo "4️⃣  Cleaning up..."
+    echo "5️⃣  Cleaning up..."
     rm -f "$DUMP_FILE"
 
     echo ""
@@ -259,19 +262,18 @@ local-nas-sync:
     echo "1️⃣  Dumping local database..."
     docker exec zapply-postgres pg_dump -U zapply -d zapply > "$DUMP_FILE"
 
-    echo "2️⃣  Copying dump to NAS..."
-    scp "$DUMP_FILE" "$NAS:/tmp/zapply_restore.sql"
+    echo "2️⃣  Terminating existing connections on NAS..."
+    ssh "$NAS" "$NAS_DOCKER exec $NAS_CONTAINER psql -U zapply -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'zapply' AND pid <> pg_backend_pid();\""
 
     echo "3️⃣  Dropping and recreating NAS database..."
     ssh "$NAS" "$NAS_DOCKER exec $NAS_CONTAINER psql -U zapply -d postgres -c 'DROP DATABASE IF EXISTS zapply;'"
     ssh "$NAS" "$NAS_DOCKER exec $NAS_CONTAINER psql -U zapply -d postgres -c 'CREATE DATABASE zapply OWNER zapply;'"
 
-    echo "4️⃣  Restoring to NAS database..."
-    ssh "$NAS" "$NAS_DOCKER exec -i $NAS_CONTAINER psql -U zapply -d zapply < /tmp/zapply_restore.sql"
+    echo "4️⃣  Restoring to NAS database (streaming via SSH)..."
+    cat "$DUMP_FILE" | ssh "$NAS" "$NAS_DOCKER exec -i $NAS_CONTAINER psql -U zapply -d zapply"
 
     echo "5️⃣  Cleaning up..."
     rm -f "$DUMP_FILE"
-    ssh "$NAS" "rm -f /tmp/zapply_restore.sql"
 
     echo ""
     echo "✅ NAS production database is now an exact copy of local!"
