@@ -29,7 +29,6 @@
           <option value="">All Phases</option>
           <option value="scraping">Scraping</option>
           <option value="matching">Matching</option>
-          <option value="applying">Applying</option>
           <option value="reporting">Reporting</option>
         </select>
         </div>
@@ -52,6 +51,7 @@
                 <span :class="['badge', `badge-${run.status}`]">{{ run.status }}</span>
                 <span :class="['badge', `badge-phase-${run.phase}`]">{{ run.phase }}</span>
                 <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(run.trigger_type) }}</span>
+                <span class="badge badge-filter">Last 7 Days</span>
               </div>
             </div>
             <div class="run-times">
@@ -99,6 +99,7 @@
               <span :class="['badge', `badge-${selectedRun.status}`]">{{ selectedRun.status }}</span>
               <span :class="['badge', `badge-phase-${selectedRun.phase}`]">{{ selectedRun.phase }}</span>
               <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(selectedRun.trigger_type) }}</span>
+              <span class="badge badge-filter">Last 7 Days</span>
             </div>
           </div>
           <button @click="closeRunDetail" class="btn-close">×</button>
@@ -647,11 +648,6 @@ onUnmounted(() => {
   color: #c084fc;
 }
 
-.badge-phase-applying {
-  background-color: rgba(34, 197, 94, 0.2);
-  color: #86efac;
-}
-
 .badge-phase-reporting {
   background-color: rgba(251, 191, 36, 0.2);
   color: #fcd34d;
@@ -661,6 +657,12 @@ onUnmounted(() => {
 .badge-trigger {
   background-color: rgba(100, 116, 139, 0.2);
   color: #94a3b8;
+}
+
+/* Filter badge */
+.badge-filter {
+  background-color: rgba(6, 182, 212, 0.2);
+  color: #67e8f9;
 }
 
 /* Infinite Scroll */
