@@ -271,18 +271,19 @@ const markAsMatched = async (job) => {
       status: 'matched',
       matching_source: 'manual'
     })
-    // Update the job in the list
-    const index = jobs.value.findIndex(j => j.id === job.id)
-    if (index !== -1) {
-      jobs.value[index] = response.data
-    }
     // Update selected job if it's the same
     if (selectedJob.value && selectedJob.value.id === job.id) {
       selectedJob.value = response.data
     }
-    // Refetch if filter would hide this job
-    if (statusFilter.value === 'rejected') {
-      resetAndFetch()
+    // Remove from list if filter would hide this job, otherwise update in place
+    const index = jobs.value.findIndex(j => j.id === job.id)
+    if (index !== -1) {
+      if (statusFilter.value === 'rejected') {
+        jobs.value.splice(index, 1)
+        total.value--
+      } else {
+        jobs.value[index] = response.data
+      }
     }
   } catch (error) {
     console.error('Failed to mark as matched:', error)
@@ -298,18 +299,19 @@ const markAsRejected = async (job) => {
       status: 'rejected',
       matching_source: 'manual'
     })
-    // Update the job in the list
-    const index = jobs.value.findIndex(j => j.id === job.id)
-    if (index !== -1) {
-      jobs.value[index] = response.data
-    }
     // Update selected job if it's the same
     if (selectedJob.value && selectedJob.value.id === job.id) {
       selectedJob.value = response.data
     }
-    // Refetch if filter would hide this job
-    if (statusFilter.value === 'matched') {
-      resetAndFetch()
+    // Remove from list if filter would hide this job, otherwise update in place
+    const index = jobs.value.findIndex(j => j.id === job.id)
+    if (index !== -1) {
+      if (statusFilter.value === 'matched') {
+        jobs.value.splice(index, 1)
+        total.value--
+      } else {
+        jobs.value[index] = response.data
+      }
     }
   } catch (error) {
     console.error('Failed to mark as rejected:', error)
@@ -327,18 +329,20 @@ const markAsApplied = async (job) => {
       status: 'matched',
       application_data: { manually_marked: true, marked_at: now }
     })
-    // Update the job in the list
-    const index = jobs.value.findIndex(j => j.id === job.id)
-    if (index !== -1) {
-      jobs.value[index] = response.data
-    }
     // Update selected job if it's the same
     if (selectedJob.value && selectedJob.value.id === job.id) {
       selectedJob.value = response.data
     }
-    // Refetch if filter would hide this job (matched filter excludes applied jobs)
-    if (statusFilter.value === 'matched') {
-      resetAndFetch()
+    // Remove from list if filter would hide this job, otherwise update in place
+    const index = jobs.value.findIndex(j => j.id === job.id)
+    if (index !== -1) {
+      if (statusFilter.value === 'matched') {
+        // Matched filter excludes applied jobs
+        jobs.value.splice(index, 1)
+        total.value--
+      } else {
+        jobs.value[index] = response.data
+      }
     }
   } catch (error) {
     console.error('Failed to mark as applied:', error)
