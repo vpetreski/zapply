@@ -34,7 +34,6 @@
                 <span :class="['badge', `badge-${run.status}`]">{{ run.status }}</span>
                 <span :class="['badge', `badge-phase-${run.phase}`]">{{ run.phase }}</span>
                 <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(run.trigger_type) }}</span>
-                <span class="badge badge-filter">Last 7 Days</span>
               </div>
             </div>
             <div class="run-times">
@@ -46,6 +45,13 @@
                 Duration: {{ formatDuration(run.duration_seconds) }}
               </span>
             </div>
+          </div>
+
+          <div class="run-filters">
+            <span class="filters-label">Filters:</span>
+            <span class="badge badge-filter">Development</span>
+            <span class="badge badge-filter">Anywhere, Colombia</span>
+            <span class="badge badge-filter">Last 7 Days</span>
           </div>
 
           <div v-if="run.stats" class="run-stats">
@@ -82,13 +88,21 @@
               <span :class="['badge', `badge-${selectedRun.status}`]">{{ selectedRun.status }}</span>
               <span :class="['badge', `badge-phase-${selectedRun.phase}`]">{{ selectedRun.phase }}</span>
               <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(selectedRun.trigger_type) }}</span>
-              <span class="badge badge-filter">Last 7 Days</span>
             </div>
           </div>
           <button @click="closeRunDetail" class="btn-close">×</button>
         </div>
 
         <div class="modal-body">
+          <div class="detail-section">
+            <h3>Filters</h3>
+            <div class="run-filters">
+              <span class="badge badge-filter">Development</span>
+              <span class="badge badge-filter">Anywhere, Colombia</span>
+              <span class="badge badge-filter">Last 7 Days</span>
+            </div>
+          </div>
+
           <div class="detail-section">
             <h3>Timing</h3>
             <div class="detail-grid">
@@ -618,6 +632,23 @@ onUnmounted(() => {
 .badge-filter {
   background-color: rgba(6, 182, 212, 0.2);
   color: #67e8f9;
+}
+
+/* Filters row */
+.run-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.filters-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 0.25rem;
 }
 
 /* Infinite Scroll */
