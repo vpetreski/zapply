@@ -62,10 +62,10 @@ async def match_job_with_claude(
     prompt = f"""You are an expert job matching assistant. Analyze this job posting against the candidate's profile and provide a match score and detailed reasoning.
 
 **CANDIDATE PROFILE:**
-Name: {user_profile.name}
-Location: {user_profile.location}
-Rate: {user_profile.rate}
 Skills: {', '.join(user_profile.skills) if user_profile.skills else 'Not specified'}
+
+**CANDIDATE PREFERENCES & REQUIREMENTS:**
+{user_profile.custom_instructions or 'No specific preferences provided'}
 
 **CANDIDATE CV/RESUME:**
 {user_profile.cv_text or 'No CV text available'}
@@ -212,7 +212,7 @@ async def match_jobs(db: AsyncSession, run: Run, min_score: float = None) -> dic
             await db.commit()
             raise ValueError("No user profile found")
 
-        add_log(run, f"Using profile: {user_profile.name}", "info")
+        add_log(run, "Using user profile for matching", "info")
         await db.commit()
 
         # Get all NEW jobs (not yet matched)

@@ -82,7 +82,7 @@ async def run_scraper(
             status_code=400,
             detail="No user profile found. Please create a profile before running the scraper."
         )
-    log_to_console(f"✅ User profile found: {profile.name}")
+    log_to_console("✅ User profile found")
 
     # Check for existing running runs
     log_to_console("🔍 Checking for existing running runs...")
