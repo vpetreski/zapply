@@ -265,27 +265,35 @@ const fetchJobs = async (append = false) => {
   }
 }
 
+// Helper to update job in list after status change
+const updateJobInList = (job, response, shouldRemove) => {
+  const index = jobs.value.findIndex(j => j.id === job.id)
+  if (index !== -1) {
+    if (shouldRemove) {
+      jobs.value.splice(index, 1)
+      total.value--
+      // Close modal if this job was being viewed
+      if (selectedJob.value && selectedJob.value.id === job.id) {
+        selectedJob.value = null
+      }
+    } else {
+      jobs.value[index] = response.data
+      // Update modal if this job is being viewed
+      if (selectedJob.value && selectedJob.value.id === job.id) {
+        selectedJob.value = response.data
+      }
+    }
+  }
+}
+
 const markAsMatched = async (job) => {
   updatingJobId.value = job.id
-  const index = jobs.value.findIndex(j => j.id === job.id)
   try {
     const response = await axios.patch(`/api/jobs/${job.id}/status`, {
       status: 'matched',
       matching_source: 'manual'
     })
-    // Update selected job if it's the same
-    if (selectedJob.value && selectedJob.value.id === job.id) {
-      selectedJob.value = response.data
-    }
-    // Remove from list if filter would hide this job, otherwise update in place
-    if (index !== -1) {
-      if (statusFilter.value === 'rejected') {
-        jobs.value.splice(index, 1)
-        total.value--
-      } else {
-        jobs.value[index] = response.data
-      }
-    }
+    updateJobInList(job, response, statusFilter.value === 'rejected')
   } catch (error) {
     console.error('Failed to mark as matched:', error)
   } finally {
@@ -295,25 +303,12 @@ const markAsMatched = async (job) => {
 
 const markAsRejected = async (job) => {
   updatingJobId.value = job.id
-  const index = jobs.value.findIndex(j => j.id === job.id)
   try {
     const response = await axios.patch(`/api/jobs/${job.id}/status`, {
       status: 'rejected',
       matching_source: 'manual'
     })
-    // Update selected job if it's the same
-    if (selectedJob.value && selectedJob.value.id === job.id) {
-      selectedJob.value = response.data
-    }
-    // Remove from list if filter would hide this job, otherwise update in place
-    if (index !== -1) {
-      if (statusFilter.value === 'matched') {
-        jobs.value.splice(index, 1)
-        total.value--
-      } else {
-        jobs.value[index] = response.data
-      }
-    }
+    updateJobInList(job, response, statusFilter.value === 'matched')
   } catch (error) {
     console.error('Failed to mark as rejected:', error)
   } finally {
@@ -323,28 +318,14 @@ const markAsRejected = async (job) => {
 
 const markAsApplied = async (job) => {
   updatingJobId.value = job.id
-  const index = jobs.value.findIndex(j => j.id === job.id)
   try {
     const now = new Date().toISOString()
-    // Don't change matching_source when marking as applied - keep auto/manual as is
     const response = await axios.patch(`/api/jobs/${job.id}/status`, {
       status: 'matched',
       application_data: { manually_marked: true, marked_at: now }
     })
-    // Update selected job if it's the same
-    if (selectedJob.value && selectedJob.value.id === job.id) {
-      selectedJob.value = response.data
-    }
-    // Remove from list if filter would hide this job, otherwise update in place
-    if (index !== -1) {
-      if (statusFilter.value === 'matched') {
-        // Matched filter excludes applied jobs
-        jobs.value.splice(index, 1)
-        total.value--
-      } else {
-        jobs.value[index] = response.data
-      }
-    }
+    // Matched filter excludes applied jobs
+    updateJobInList(job, response, statusFilter.value === 'matched')
   } catch (error) {
     console.error('Failed to mark as applied:', error)
   } finally {
