@@ -14,7 +14,7 @@ from app import __version__
 from app.config import settings
 from app.database import engine
 from app.routers import admin, auth, health, jobs, profile, runs, scraper, stats
-from app.services.scheduler_service import start_scheduler, stop_scheduler, get_scheduler_status
+from app.services.scheduler_service import start_scheduler_async, stop_scheduler, get_scheduler_status
 from app.utils import log_to_console, run_migrations
 
 # Configure logging - simple format for console output
@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Start scheduler
     try:
-        start_scheduler()
+        await start_scheduler_async()
         status = get_scheduler_status()
         if status["running"]:
             logger.info(f"✓ Scheduler started with {len(status['jobs'])} configured jobs")
