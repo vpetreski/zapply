@@ -55,7 +55,7 @@
           </div>
 
           <div v-if="run.stats" class="run-stats">
-            <div class="stat-item" v-for="(value, key) in run.stats" :key="key">
+            <div class="stat-item" v-for="(value, key) in filterStats(run.stats)" :key="key">
               <span class="stat-label">{{ formatStatKey(key) }}:</span>
               <span class="stat-value">{{ value }}</span>
             </div>
@@ -124,7 +124,7 @@
           <div v-if="selectedRun.stats" class="detail-section">
             <h3>Statistics</h3>
             <div class="detail-grid">
-              <div v-for="(value, key) in selectedRun.stats" :key="key">
+              <div v-for="(value, key) in filterStats(selectedRun.stats)" :key="key">
                 <span class="detail-label">{{ formatStatKey(key) }}:</span>
                 <span>{{ value }}</span>
               </div>
@@ -337,6 +337,14 @@ const formatStatKey = (key) => {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+const filterStats = (stats) => {
+  // Remove keys that are shown elsewhere (filters section, etc.)
+  const excludeKeys = ['filters', 'source']
+  return Object.fromEntries(
+    Object.entries(stats).filter(([key]) => !excludeKeys.includes(key))
+  )
 }
 
 const formatTriggerType = (triggerType) => {
