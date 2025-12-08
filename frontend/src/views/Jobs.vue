@@ -28,6 +28,7 @@
         <div class="filter-group">
           <label for="days-filter">Scraped:</label>
           <select id="days-filter" v-model="daysFilter" @change="resetAndFetch" class="filter-select">
+            <option value="0">Today</option>
             <option value="7">Last 7 Days</option>
             <option value="15">Last 15 Days</option>
             <option value="30">Last 30 Days</option>
@@ -204,7 +205,7 @@ const loading = ref(true)
 const loadingMore = ref(false)
 const statusFilter = ref('matched')
 const matchingSourceFilter = ref('')
-const daysFilter = ref('7')
+const daysFilter = ref('0')
 const selectedJob = ref(null)
 const updatingJobId = ref(null)
 
@@ -264,6 +265,27 @@ const fetchJobs = async (append = false) => {
   }
 }
 
+// Helper to update job in list after status change
+const updateJobInList = (job, response, shouldRemove) => {
+  const index = jobs.value.findIndex(j => j.id === job.id)
+  if (index !== -1) {
+    if (shouldRemove) {
+      jobs.value.splice(index, 1)
+      total.value--
+      // Close modal if this job was being viewed
+      if (selectedJob.value && selectedJob.value.id === job.id) {
+        selectedJob.value = null
+      }
+    } else {
+      jobs.value[index] = response.data
+      // Update modal if this job is being viewed
+      if (selectedJob.value && selectedJob.value.id === job.id) {
+        selectedJob.value = response.data
+      }
+    }
+  }
+}
+
 const markAsMatched = async (job) => {
   updatingJobId.value = job.id
   try {
@@ -271,19 +293,7 @@ const markAsMatched = async (job) => {
       status: 'matched',
       matching_source: 'manual'
     })
-    // Update the job in the list
-    const index = jobs.value.findIndex(j => j.id === job.id)
-    if (index !== -1) {
-      jobs.value[index] = response.data
-    }
-    // Update selected job if it's the same
-    if (selectedJob.value && selectedJob.value.id === job.id) {
-      selectedJob.value = response.data
-    }
-    // Refetch if filter would hide this job
-    if (statusFilter.value === 'rejected') {
-      resetAndFetch()
-    }
+    updateJobInList(job, response, statusFilter.value === 'rejected')
   } catch (error) {
     console.error('Failed to mark as matched:', error)
   } finally {
@@ -298,19 +308,7 @@ const markAsRejected = async (job) => {
       status: 'rejected',
       matching_source: 'manual'
     })
-    // Update the job in the list
-    const index = jobs.value.findIndex(j => j.id === job.id)
-    if (index !== -1) {
-      jobs.value[index] = response.data
-    }
-    // Update selected job if it's the same
-    if (selectedJob.value && selectedJob.value.id === job.id) {
-      selectedJob.value = response.data
-    }
-    // Refetch if filter would hide this job
-    if (statusFilter.value === 'matched') {
-      resetAndFetch()
-    }
+    updateJobInList(job, response, statusFilter.value === 'matched')
   } catch (error) {
     console.error('Failed to mark as rejected:', error)
   } finally {
@@ -322,24 +320,12 @@ const markAsApplied = async (job) => {
   updatingJobId.value = job.id
   try {
     const now = new Date().toISOString()
-    // Don't change matching_source when marking as applied - keep auto/manual as is
     const response = await axios.patch(`/api/jobs/${job.id}/status`, {
       status: 'matched',
       application_data: { manually_marked: true, marked_at: now }
     })
-    // Update the job in the list
-    const index = jobs.value.findIndex(j => j.id === job.id)
-    if (index !== -1) {
-      jobs.value[index] = response.data
-    }
-    // Update selected job if it's the same
-    if (selectedJob.value && selectedJob.value.id === job.id) {
-      selectedJob.value = response.data
-    }
-    // Refetch if filter would hide this job (matched filter excludes applied jobs)
-    if (statusFilter.value === 'matched') {
-      resetAndFetch()
-    }
+    // Matched filter excludes applied jobs
+    updateJobInList(job, response, statusFilter.value === 'matched')
   } catch (error) {
     console.error('Failed to mark as applied:', error)
   } finally {

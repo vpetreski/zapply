@@ -52,8 +52,16 @@ async def list_jobs(
         query = query.filter(Job.company.ilike(f"%{company}%"))
     if matching_source:
         query = query.filter(Job.matching_source == matching_source)
-    if days:
-        cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    if days is not None:
+        if days == 0:
+            # "Today" - since midnight Colombian time (UTC-5)
+            from zoneinfo import ZoneInfo
+            colombia_tz = ZoneInfo("America/Bogota")
+            colombia_now = datetime.now(colombia_tz)
+            colombia_midnight = colombia_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            cutoff_date = colombia_midnight.astimezone(timezone.utc).replace(tzinfo=None)
+        else:
+            cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
         query = query.filter(Job.created_at >= cutoff_date)
 
     # Get total count
