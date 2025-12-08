@@ -228,9 +228,16 @@ const fetchJobs = async (append = false) => {
       page_size: pageSize.value
     }
 
-    if (statusFilter.value) {
-      params.status = statusFilter.value
+    // Handle status filter with proper API parameters
+    if (statusFilter.value === 'matched') {
+      params.status = 'matched'
+      params.applied = false  // Matched but not applied
+    } else if (statusFilter.value === 'rejected') {
+      params.status = 'rejected'
+    } else if (statusFilter.value === 'applied') {
+      params.applied = true  // Any job that has been applied
     }
+    // statusFilter.value === '' means "All" - no filter
 
     if (matchingSourceFilter.value) {
       params.matching_source = matchingSourceFilter.value
