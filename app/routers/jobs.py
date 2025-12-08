@@ -52,8 +52,12 @@ async def list_jobs(
         query = query.filter(Job.company.ilike(f"%{company}%"))
     if matching_source:
         query = query.filter(Job.matching_source == matching_source)
-    if days:
-        cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    if days is not None:
+        if days == 0:
+            # "Today" - since midnight UTC
+            cutoff_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+        else:
+            cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
         query = query.filter(Job.created_at >= cutoff_date)
 
     # Get total count

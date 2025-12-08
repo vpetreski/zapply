@@ -28,6 +28,7 @@
         <div class="filter-group">
           <label for="days-filter">Scraped:</label>
           <select id="days-filter" v-model="daysFilter" @change="resetAndFetch" class="filter-select">
+            <option value="0">Today</option>
             <option value="7">Last 7 Days</option>
             <option value="15">Last 15 Days</option>
             <option value="30">Last 30 Days</option>
@@ -204,7 +205,7 @@ const loading = ref(true)
 const loadingMore = ref(false)
 const statusFilter = ref('matched')
 const matchingSourceFilter = ref('')
-const daysFilter = ref('7')
+const daysFilter = ref('0')
 const selectedJob = ref(null)
 const updatingJobId = ref(null)
 
