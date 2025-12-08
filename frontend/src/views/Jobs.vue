@@ -267,6 +267,7 @@ const fetchJobs = async (append = false) => {
 
 const markAsMatched = async (job) => {
   updatingJobId.value = job.id
+  const index = jobs.value.findIndex(j => j.id === job.id)
   try {
     const response = await axios.patch(`/api/jobs/${job.id}/status`, {
       status: 'matched',
@@ -277,7 +278,6 @@ const markAsMatched = async (job) => {
       selectedJob.value = response.data
     }
     // Remove from list if filter would hide this job, otherwise update in place
-    const index = jobs.value.findIndex(j => j.id === job.id)
     if (index !== -1) {
       if (statusFilter.value === 'rejected') {
         jobs.value.splice(index, 1)
@@ -295,6 +295,7 @@ const markAsMatched = async (job) => {
 
 const markAsRejected = async (job) => {
   updatingJobId.value = job.id
+  const index = jobs.value.findIndex(j => j.id === job.id)
   try {
     const response = await axios.patch(`/api/jobs/${job.id}/status`, {
       status: 'rejected',
@@ -305,7 +306,6 @@ const markAsRejected = async (job) => {
       selectedJob.value = response.data
     }
     // Remove from list if filter would hide this job, otherwise update in place
-    const index = jobs.value.findIndex(j => j.id === job.id)
     if (index !== -1) {
       if (statusFilter.value === 'matched') {
         jobs.value.splice(index, 1)
@@ -323,6 +323,7 @@ const markAsRejected = async (job) => {
 
 const markAsApplied = async (job) => {
   updatingJobId.value = job.id
+  const index = jobs.value.findIndex(j => j.id === job.id)
   try {
     const now = new Date().toISOString()
     // Don't change matching_source when marking as applied - keep auto/manual as is
@@ -335,7 +336,6 @@ const markAsApplied = async (job) => {
       selectedJob.value = response.data
     }
     // Remove from list if filter would hide this job, otherwise update in place
-    const index = jobs.value.findIndex(j => j.id === job.id)
     if (index !== -1) {
       if (statusFilter.value === 'matched') {
         // Matched filter excludes applied jobs
