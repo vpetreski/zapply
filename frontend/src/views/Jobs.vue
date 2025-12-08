@@ -329,6 +329,10 @@ const markAsApplied = async (job) => {
     if (selectedJob.value && selectedJob.value.id === job.id) {
       selectedJob.value = response.data
     }
+    // Refetch if filter would hide this job (matched filter excludes applied jobs)
+    if (statusFilter.value === 'matched') {
+      resetAndFetch()
+    }
   } catch (error) {
     console.error('Failed to mark as applied:', error)
   } finally {

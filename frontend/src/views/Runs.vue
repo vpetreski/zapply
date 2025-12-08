@@ -49,8 +49,10 @@
 
           <div class="run-filters">
             <span class="filters-label">Filters:</span>
-            <span class="badge badge-filter">Development</span>
-            <span class="badge badge-filter">Anywhere, Colombia</span>
+            <template v-if="run.stats?.filters">
+              <span v-if="run.stats.filters.category" class="badge badge-filter">{{ formatFilterValue(run.stats.filters.category) }}</span>
+              <span v-if="run.stats.filters.location" class="badge badge-filter">{{ formatFilterValue(run.stats.filters.location) }}</span>
+            </template>
             <span class="badge badge-filter">Last 7 Days</span>
           </div>
 
@@ -97,8 +99,10 @@
           <div class="detail-section">
             <h3>Filters</h3>
             <div class="run-filters">
-              <span class="badge badge-filter">Development</span>
-              <span class="badge badge-filter">Anywhere, Colombia</span>
+              <template v-if="selectedRun.stats?.filters">
+                <span v-if="selectedRun.stats.filters.category" class="badge badge-filter">{{ formatFilterValue(selectedRun.stats.filters.category) }}</span>
+                <span v-if="selectedRun.stats.filters.location" class="badge badge-filter">{{ formatFilterValue(selectedRun.stats.filters.location) }}</span>
+              </template>
               <span class="badge badge-filter">Last 7 Days</span>
             </div>
           </div>
@@ -337,6 +341,15 @@ const formatStatKey = (key) => {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+const formatFilterValue = (value) => {
+  // Format filter values for display (e.g., "anywhere,colombia" -> "Anywhere, Colombia")
+  if (!value) return ''
+  return value
+    .split(',')
+    .map(v => v.trim().charAt(0).toUpperCase() + v.trim().slice(1))
+    .join(', ')
 }
 
 const filterStats = (stats) => {
