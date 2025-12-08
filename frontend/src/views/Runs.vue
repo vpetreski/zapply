@@ -34,7 +34,6 @@
                 <span :class="['badge', `badge-${run.status}`]">{{ run.status }}</span>
                 <span :class="['badge', `badge-phase-${run.phase}`]">{{ run.phase }}</span>
                 <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(run.trigger_type) }}</span>
-                <span class="badge badge-filter">Last 7 Days</span>
               </div>
             </div>
             <div class="run-times">
@@ -48,8 +47,17 @@
             </div>
           </div>
 
+          <div class="run-filters">
+            <span class="filters-label">Filters:</span>
+            <template v-if="run.stats?.filters">
+              <span v-if="run.stats.filters.category" class="badge badge-filter">{{ formatFilterValue(run.stats.filters.category) }}</span>
+              <span v-if="run.stats.filters.location" class="badge badge-filter">{{ formatFilterValue(run.stats.filters.location) }}</span>
+            </template>
+            <span class="badge badge-filter">Last 7 Days</span>
+          </div>
+
           <div v-if="run.stats" class="run-stats">
-            <div class="stat-item" v-for="(value, key) in run.stats" :key="key">
+            <div class="stat-item" v-for="(value, key) in filterStats(run.stats)" :key="key">
               <span class="stat-label">{{ formatStatKey(key) }}:</span>
               <span class="stat-value">{{ value }}</span>
             </div>
@@ -82,13 +90,23 @@
               <span :class="['badge', `badge-${selectedRun.status}`]">{{ selectedRun.status }}</span>
               <span :class="['badge', `badge-phase-${selectedRun.phase}`]">{{ selectedRun.phase }}</span>
               <span :class="['badge', 'badge-trigger']">{{ formatTriggerType(selectedRun.trigger_type) }}</span>
-              <span class="badge badge-filter">Last 7 Days</span>
             </div>
           </div>
           <button @click="closeRunDetail" class="btn-close">×</button>
         </div>
 
         <div class="modal-body">
+          <div class="detail-section">
+            <h3>Filters</h3>
+            <div class="run-filters">
+              <template v-if="selectedRun.stats?.filters">
+                <span v-if="selectedRun.stats.filters.category" class="badge badge-filter">{{ formatFilterValue(selectedRun.stats.filters.category) }}</span>
+                <span v-if="selectedRun.stats.filters.location" class="badge badge-filter">{{ formatFilterValue(selectedRun.stats.filters.location) }}</span>
+              </template>
+              <span class="badge badge-filter">Last 7 Days</span>
+            </div>
+          </div>
+
           <div class="detail-section">
             <h3>Timing</h3>
             <div class="detail-grid">
@@ -110,7 +128,7 @@
           <div v-if="selectedRun.stats" class="detail-section">
             <h3>Statistics</h3>
             <div class="detail-grid">
-              <div v-for="(value, key) in selectedRun.stats" :key="key">
+              <div v-for="(value, key) in filterStats(selectedRun.stats)" :key="key">
                 <span class="detail-label">{{ formatStatKey(key) }}:</span>
                 <span>{{ value }}</span>
               </div>
@@ -323,6 +341,23 @@ const formatStatKey = (key) => {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+const formatFilterValue = (value) => {
+  // Format filter values for display (e.g., "anywhere,colombia" -> "Anywhere, Colombia")
+  if (!value) return ''
+  return value
+    .split(',')
+    .map(v => v.trim().charAt(0).toUpperCase() + v.trim().slice(1))
+    .join(', ')
+}
+
+const filterStats = (stats) => {
+  // Remove keys that are shown elsewhere (filters section, etc.)
+  const excludeKeys = ['filters', 'source']
+  return Object.fromEntries(
+    Object.entries(stats).filter(([key]) => !excludeKeys.includes(key))
+  )
 }
 
 const formatTriggerType = (triggerType) => {
@@ -618,6 +653,23 @@ onUnmounted(() => {
 .badge-filter {
   background-color: rgba(6, 182, 212, 0.2);
   color: #67e8f9;
+}
+
+/* Filters row */
+.run-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.filters-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 0.25rem;
 }
 
 /* Infinite Scroll */

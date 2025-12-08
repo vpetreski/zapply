@@ -9,9 +9,10 @@
         <div class="filter-group">
           <label for="status-filter">Status:</label>
           <select id="status-filter" v-model="statusFilter" @change="resetAndFetch" class="filter-select">
-            <option value="">All Statuses</option>
             <option value="matched">Matched</option>
             <option value="rejected">Rejected</option>
+            <option value="applied">Applied</option>
+            <option value="">All</option>
           </select>
         </div>
 
@@ -201,7 +202,7 @@ import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 const jobs = ref([])
 const loading = ref(true)
 const loadingMore = ref(false)
-const statusFilter = ref('')
+const statusFilter = ref('matched')
 const matchingSourceFilter = ref('')
 const daysFilter = ref('7')
 const selectedJob = ref(null)
@@ -314,9 +315,9 @@ const markAsApplied = async (job) => {
   updatingJobId.value = job.id
   try {
     const now = new Date().toISOString()
+    // Don't change matching_source when marking as applied - keep auto/manual as is
     const response = await axios.patch(`/api/jobs/${job.id}/status`, {
       status: 'matched',
-      matching_source: 'manual',
       application_data: { manually_marked: true, marked_at: now }
     })
     // Update the job in the list
@@ -327,6 +328,10 @@ const markAsApplied = async (job) => {
     // Update selected job if it's the same
     if (selectedJob.value && selectedJob.value.id === job.id) {
       selectedJob.value = response.data
+    }
+    // Refetch if filter would hide this job (matched filter excludes applied jobs)
+    if (statusFilter.value === 'matched') {
+      resetAndFetch()
     }
   } catch (error) {
     console.error('Failed to mark as applied:', error)
