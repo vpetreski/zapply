@@ -36,7 +36,15 @@ async def list_jobs(
     query = select(Job)
 
     if status:
-        query = query.filter(Job.status == status)
+        if status == "applied":
+            # "applied" means jobs with applied_at set (regardless of status)
+            query = query.filter(Job.applied_at.isnot(None))
+        elif status == "matched":
+            # "matched" means matched jobs that are NOT applied (strict filter)
+            query = query.filter(Job.status == status).filter(Job.applied_at.is_(None))
+        else:
+            # Other statuses (rejected) - standard filter
+            query = query.filter(Job.status == status)
     if source:
         query = query.filter(Job.source == source)
     if company:
