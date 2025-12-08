@@ -86,7 +86,7 @@ class Job(Base):
         DateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
     matched_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
     reported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     def __repr__(self) -> str:

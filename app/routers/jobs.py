@@ -21,6 +21,7 @@ router = APIRouter()
 async def list_jobs(
     current_user: Annotated[User, Depends(get_current_user)],
     status: Optional[str] = Query(None, description="Filter by job status (matched, rejected)"),
+    applied: Optional[bool] = Query(None, description="Filter by application status (true=applied, false=not applied)"),
     source: Optional[str] = Query(None, description="Filter by job source"),
     company: Optional[str] = Query(None, description="Filter by company name"),
     matching_source: Optional[str] = Query(None, description="Filter by matching source (auto, manual)"),
@@ -30,21 +31,21 @@ async def list_jobs(
     db: AsyncSession = Depends(get_db),
 ) -> JobListResponse:
     """List jobs with optional filtering and pagination. Always sorted by date desc, then score desc."""
-    log_to_console(f"📡 API: GET /api/jobs - List jobs (page={page}, size={page_size}, status={status}, matching_source={matching_source}, days={days})")
+    log_to_console(f"📡 API: GET /api/jobs - List jobs (page={page}, size={page_size}, status={status}, applied={applied}, matching_source={matching_source}, days={days})")
 
     # Build query
     query = select(Job)
 
+    # Filter by job status (matched, rejected)
     if status:
-        if status == "applied":
-            # "applied" means jobs with applied_at set (regardless of status)
+        query = query.filter(Job.status == status)
+
+    # Filter by application status
+    if applied is not None:
+        if applied:
             query = query.filter(Job.applied_at.isnot(None))
-        elif status == "matched":
-            # "matched" means matched jobs that are NOT applied (strict filter)
-            query = query.filter(Job.status == status).filter(Job.applied_at.is_(None))
         else:
-            # Other statuses (rejected) - standard filter
-            query = query.filter(Job.status == status)
+            query = query.filter(Job.applied_at.is_(None))
     if source:
         query = query.filter(Job.source == source)
     if company:
