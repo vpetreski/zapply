@@ -69,9 +69,9 @@ async def load_run_frequency() -> str:
         return "manual"
 
 
-def start_scheduler() -> None:
+async def start_scheduler_async() -> None:
     """
-    Start the scheduler and configure jobs based on settings.
+    Start the scheduler and configure jobs based on settings (async version).
     """
     global scheduler
 
@@ -81,10 +81,9 @@ def start_scheduler() -> None:
 
     scheduler = AsyncIOScheduler()
 
-    # Load frequency from database using asyncio
-    import asyncio
+    # Load frequency from database
     try:
-        frequency = asyncio.run(load_run_frequency())
+        frequency = await load_run_frequency()
     except Exception as e:
         logger.error(f"Failed to load settings: {e}, defaulting to manual")
         frequency = "manual"
@@ -93,6 +92,22 @@ def start_scheduler() -> None:
 
     scheduler.start()
     logger.info(f"Scheduler started with frequency: {frequency}")
+
+
+def start_scheduler() -> None:
+    """
+    Start the scheduler (sync wrapper for backwards compatibility).
+    Note: Prefer start_scheduler_async() when called from async context.
+    """
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+        # We're in an async context, schedule the async version
+        asyncio.create_task(start_scheduler_async())
+    except RuntimeError:
+        # No event loop running, safe to use asyncio.run
+        asyncio.run(start_scheduler_async())
 
 
 def stop_scheduler() -> None:
