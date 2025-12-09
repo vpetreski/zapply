@@ -52,8 +52,19 @@ async def scrape_and_save_jobs(
         Dictionary with statistics: {total, new, existing, failed}
 
     Raises:
-        ValueError: If no user profile exists
+        ValueError: If no user profile exists or if a run is already in progress
     """
+    # Check if a run is already in progress (prevent duplicate runs)
+    running_result = await db.execute(
+        select(Run).where(Run.status == RunStatus.RUNNING.value)
+    )
+    running_run = running_result.scalar_one_or_none()
+    if running_run:
+        raise ValueError(
+            f"A run is already in progress (Run #{running_run.id}, started at {running_run.started_at}). "
+            "Please wait for it to complete before starting a new run."
+        )
+
     # Check if user profile exists - REQUIRED for matching
     result = await db.execute(select(UserProfile).limit(1))
     profile = result.scalar_one_or_none()

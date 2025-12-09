@@ -32,6 +32,12 @@ async def run_scheduled_pipeline(trigger_type: str) -> None:
         db = await db_generator.__anext__()
         await scrape_and_save_jobs(db, trigger_type=trigger_type)
         logger.info(f"Scheduled pipeline run completed: {trigger_type}")
+    except ValueError as e:
+        # Expected errors (no profile, run already in progress)
+        if "already in progress" in str(e):
+            logger.warning(f"Scheduled pipeline skipped: {e}")
+        else:
+            logger.error(f"Scheduled pipeline validation failed: {e}")
     except Exception as e:
         logger.error(f"Scheduled pipeline run failed: {trigger_type}, error: {e}")
     finally:
@@ -155,6 +161,8 @@ def configure_scheduler_jobs(frequency: str) -> None:
             id="daily_run",
             name="Daily Pipeline Run (6am Colombian time)",
             replace_existing=True,
+            coalesce=True,  # Combine missed runs into one
+            max_instances=1,  # Prevent concurrent runs
         )
         logger.info("Scheduler configured for daily runs at 6am America/Bogota time")
 
@@ -167,6 +175,8 @@ def configure_scheduler_jobs(frequency: str) -> None:
             id="hourly_run",
             name="Hourly Pipeline Run",
             replace_existing=True,
+            coalesce=True,  # Combine missed runs into one
+            max_instances=1,  # Prevent concurrent runs
         )
         logger.info("Scheduler configured for hourly runs at the start of each hour")
 
