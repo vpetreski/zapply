@@ -32,6 +32,12 @@ async def run_scheduled_pipeline(trigger_type: str) -> None:
         db = await db_generator.__anext__()
         await scrape_and_save_jobs(db, trigger_type=trigger_type)
         logger.info(f"Scheduled pipeline run completed: {trigger_type}")
+    except ValueError as e:
+        # Expected errors (no profile, run already in progress)
+        if "already in progress" in str(e):
+            logger.warning(f"Scheduled pipeline skipped: {e}")
+        else:
+            logger.error(f"Scheduled pipeline validation failed: {e}")
     except Exception as e:
         logger.error(f"Scheduled pipeline run failed: {trigger_type}, error: {e}")
     finally:
