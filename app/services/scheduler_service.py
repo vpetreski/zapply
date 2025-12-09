@@ -155,6 +155,8 @@ def configure_scheduler_jobs(frequency: str) -> None:
             id="daily_run",
             name="Daily Pipeline Run (6am Colombian time)",
             replace_existing=True,
+            coalesce=True,  # Combine missed runs into one
+            max_instances=1,  # Prevent concurrent runs
         )
         logger.info("Scheduler configured for daily runs at 6am America/Bogota time")
 
@@ -167,6 +169,8 @@ def configure_scheduler_jobs(frequency: str) -> None:
             id="hourly_run",
             name="Hourly Pipeline Run",
             replace_existing=True,
+            coalesce=True,  # Combine missed runs into one
+            max_instances=1,  # Prevent concurrent runs
         )
         logger.info("Scheduler configured for hourly runs at the start of each hour")
 
