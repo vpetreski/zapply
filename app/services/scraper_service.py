@@ -1,8 +1,8 @@
 """Scraper service to handle job scraping, matching, and saving to database."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -11,6 +11,12 @@ from app.schemas import JobCreate
 from app.scraper import WorkingNomadsScraper
 from app.services.matching_service import match_jobs
 from app.utils import log_to_console
+
+# PostgreSQL advisory lock ID for scraper runs (arbitrary but consistent number)
+SCRAPER_LOCK_ID = 12345678
+
+# Maximum time a run can be "running" before it's considered stale (in minutes)
+STALE_RUN_TIMEOUT_MINUTES = 30
 
 
 async def get_setting(db: AsyncSession, key: str, default: str = "") -> str:
@@ -38,6 +44,60 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
     attributes.flag_modified(run, "logs")
 
 
+async def cleanup_stale_runs(db: AsyncSession) -> int:
+    """
+    Mark runs that have been 'running' for too long as failed.
+
+    Returns:
+        Number of stale runs cleaned up
+    """
+    cutoff_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=STALE_RUN_TIMEOUT_MINUTES)
+
+    # Find and update stale runs
+    result = await db.execute(
+        update(Run)
+        .where(Run.status == RunStatus.RUNNING.value)
+        .where(Run.started_at < cutoff_time)
+        .values(
+            status=RunStatus.FAILED.value,
+            completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            error_message=f"Run exceeded {STALE_RUN_TIMEOUT_MINUTES} minute timeout - marked as failed automatically"
+        )
+        .returning(Run.id)
+    )
+    stale_ids = result.scalars().all()
+
+    if stale_ids:
+        await db.commit()
+        log_to_console(f"🧹 Cleaned up {len(stale_ids)} stale runs: {stale_ids}")
+
+    return len(stale_ids)
+
+
+async def acquire_scraper_lock(db: AsyncSession) -> bool:
+    """
+    Try to acquire a session-level advisory lock for running the scraper.
+
+    Uses PostgreSQL's pg_try_advisory_lock which:
+    - Returns true if lock acquired, false if already held by another session
+    - Must be explicitly released with release_scraper_lock()
+    - Is non-blocking (doesn't wait)
+
+    Returns:
+        True if lock acquired, False if another scraper is running
+    """
+    result = await db.execute(
+        text(f"SELECT pg_try_advisory_lock({SCRAPER_LOCK_ID})")
+    )
+    return result.scalar()
+
+
+async def release_scraper_lock(db: AsyncSession) -> None:
+    """Release the session-level advisory lock."""
+    await db.execute(text(f"SELECT pg_advisory_unlock({SCRAPER_LOCK_ID})"))
+    log_to_console("🔓 Released scraper lock")
+
+
 async def scrape_and_save_jobs(
     db: AsyncSession, trigger_type: str = RunTriggerType.MANUAL.value
 ) -> dict[str, int]:
@@ -54,50 +114,61 @@ async def scrape_and_save_jobs(
     Raises:
         ValueError: If no user profile exists or if a run is already in progress
     """
-    # Check if a run is already in progress (prevent duplicate runs)
-    running_result = await db.execute(
-        select(Run).where(Run.status == RunStatus.RUNNING.value)
-    )
-    running_run = running_result.scalar_one_or_none()
-    if running_run:
+    # STEP 1: Clean up any stale runs first
+    await cleanup_stale_runs(db)
+
+    # STEP 2: Acquire advisory lock (atomic, prevents race conditions)
+    lock_acquired = await acquire_scraper_lock(db)
+    if not lock_acquired:
         raise ValueError(
-            f"A run is already in progress (Run #{running_run.id}, started at {running_run.started_at}). "
+            "Another scraper process is currently running (could not acquire lock). "
             "Please wait for it to complete before starting a new run."
         )
 
-    # Check if user profile exists - REQUIRED for matching
-    result = await db.execute(select(UserProfile).limit(1))
-    profile = result.scalar_one_or_none()
+    log_to_console("🔒 Acquired scraper lock")
 
-    if not profile:
-        raise ValueError(
-            "No user profile found. Please create a profile before running the scraper. "
-            "The profile is required for job matching."
-        )
-
-    # Create run record
-    run = Run(
-        status=RunStatus.RUNNING.value,
-        phase=RunPhase.SCRAPING.value,
-        trigger_type=trigger_type,
-        logs=[],
-        started_at=datetime.now(timezone.utc).replace(tzinfo=None),
-    )
-    db.add(run)
-    await db.commit()
-    await db.refresh(run)
-
-    add_log(run, "Starting job scraping from Working Nomads", "info")
-    await db.commit()
-
-    stats = {
-        "total": 0,
-        "new": 0,
-        "existing": 0,
-        "failed": 0,
-    }
-
+    # Wrap everything in try/finally to ensure lock is ALWAYS released
+    run = None  # Initialize run outside try so we can access it in except
+    stats = {"total": 0, "new": 0, "existing": 0, "failed": 0}  # Initialize stats too
     try:
+        # STEP 3: Double-check for running runs (belt AND suspenders)
+        running_result = await db.execute(
+            select(Run).where(Run.status == RunStatus.RUNNING.value)
+        )
+        running_run = running_result.scalar_one_or_none()
+        if running_run:
+            raise ValueError(
+                f"A run is already in progress (Run #{running_run.id}, started at {running_run.started_at}). "
+                "Please wait for it to complete before starting a new run."
+            )
+
+        # Check if user profile exists - REQUIRED for matching
+        result = await db.execute(select(UserProfile).limit(1))
+        profile = result.scalar_one_or_none()
+
+        if not profile:
+            raise ValueError(
+                "No user profile found. Please create a profile before running the scraper. "
+                "The profile is required for job matching."
+            )
+
+        # Create run record
+        run = Run(
+            status=RunStatus.RUNNING.value,
+            phase=RunPhase.SCRAPING.value,
+            trigger_type=trigger_type,
+            logs=[],
+            started_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+
+        log_to_console(f"📋 Created run #{run.id}")
+
+        add_log(run, "Starting job scraping from Working Nomads", "info")
+        await db.commit()
+
         # Initialize scraper
         scraper = WorkingNomadsScraper()
         add_log(run, "Initialized Working Nomads scraper", "info")
@@ -250,14 +321,22 @@ async def scrape_and_save_jobs(
         await db.commit()
 
     except Exception as e:
-        # Handle errors
-        run.status = RunStatus.FAILED.value
-        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
-        run.error_message = str(e)
-        add_log(run, f"Scraping failed: {str(e)}", "error")
-        await db.commit()
+        # Handle errors - only update run if it was created
+        if run is not None:
+            run.status = RunStatus.FAILED.value
+            run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
+            run.error_message = str(e)
+            add_log(run, f"Scraping failed: {str(e)}", "error")
+            await db.commit()
         log_to_console(f"\n❌ Error: {str(e)}")
         raise
+
+    finally:
+        # ALWAYS release the lock, even on error
+        try:
+            await release_scraper_lock(db)
+        except Exception as unlock_error:
+            log_to_console(f"⚠️ Warning: Failed to release scraper lock: {unlock_error}")
 
     return stats
