@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -42,12 +42,15 @@ class Job(Base):
     """Job posting from various sources."""
 
     __tablename__ = "jobs"
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_jobs_source_source_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     # Source information
     source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    source_id: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
+    source_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     url: Mapped[str] = mapped_column(String(500), nullable=False)
     resolved_url: Mapped[Optional[str]] = mapped_column(String(500), index=True)  # For cross-source dedup
 
@@ -260,9 +263,17 @@ class SourceRun(Base):
     """Track individual source execution within a run."""
 
     __tablename__ = "source_runs"
+    __table_args__ = (
+        UniqueConstraint("run_id", "source_name", name="uq_source_runs_run_source"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    run_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("runs.id", ondelete="CASCADE", name="fk_source_runs_run_id_runs"),
+        nullable=False,
+        index=True
+    )
     source_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=SourceRunStatus.RUNNING.value, index=True
