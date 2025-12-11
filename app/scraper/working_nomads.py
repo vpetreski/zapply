@@ -18,6 +18,7 @@ class WorkingNomadsScraper(BaseScraper):
     SOURCE_LABEL = "Working Nomads"
     SOURCE_DESCRIPTION = "Remote job board for digital nomads with development and tech positions"
     REQUIRES_LOGIN = True
+    REQUIRED_CREDENTIALS = ["username", "password"]
 
     def __init__(
         self,

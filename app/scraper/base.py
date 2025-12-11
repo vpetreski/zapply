@@ -19,6 +19,7 @@ class BaseScraper(ABC):
     SOURCE_LABEL: str = ""
     SOURCE_DESCRIPTION: str = ""
     REQUIRES_LOGIN: bool = False
+    REQUIRED_CREDENTIALS: list[str] = []  # e.g., ["username", "password"] or ["api_key"]
 
     def __init__(
         self,
@@ -109,4 +110,5 @@ class BaseScraper(ABC):
             "label": cls.SOURCE_LABEL,
             "description": cls.SOURCE_DESCRIPTION,
             "requires_login": cls.REQUIRES_LOGIN,
+            "required_credentials": cls.REQUIRED_CREDENTIALS,
         }

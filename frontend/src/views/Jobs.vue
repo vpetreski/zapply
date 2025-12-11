@@ -79,6 +79,7 @@
             <div class="job-footer-left">
               <span v-if="job.location" class="text-muted">📍 {{ job.location }}</span>
               <span class="text-muted timestamp">🕐 {{ formatTimestamp(job.created_at) }}</span>
+              <span class="text-muted source-label">{{ formatSourceName(job.source) }}</span>
             </div>
             <div class="job-footer-right">
               <button
@@ -422,6 +423,15 @@ const formatTimestamp = (timestamp) => {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
+const formatSourceName = (sourceName) => {
+  if (!sourceName) return ''
+  // Convert snake_case to Title Case (e.g., "working_nomads" -> "Working Nomads")
+  return sourceName
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 onMounted(() => {
   fetchSources()
   fetchJobs()
@@ -596,6 +606,15 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.source-label {
+  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  background-color: rgba(99, 102, 241, 0.15);
+  border-radius: 0.25rem;
+  color: #a5b4fc;
+  width: fit-content;
 }
 
 .job-footer-right {

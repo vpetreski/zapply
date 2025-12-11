@@ -126,16 +126,27 @@ def check_source_credentials(source: ScraperSource) -> dict[str, bool]:
     """
     Check which credentials are configured for a source.
 
+    Only checks credentials that the scraper actually requires.
+
     Args:
         source: ScraperSource to check
 
     Returns:
         Dict with credential name -> configured (True/False)
     """
+    # Get required credentials from scraper class
+    scraper_class = ScraperRegistry.get(source.name)
+    if not scraper_class:
+        return {}
+
+    required = getattr(scraper_class, "REQUIRED_CREDENTIALS", [])
+    if not required:
+        return {}
+
     credentials = get_source_credentials(source)
     return {
-        key: bool(value)
-        for key, value in credentials.items()
+        key: bool(credentials.get(key))
+        for key in required
     }
 
 
