@@ -16,6 +16,7 @@ import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from xml.etree.ElementTree import Element
 
 import httpx
 from bs4 import BeautifulSoup
@@ -179,7 +180,7 @@ class WeWorkRemotelyScraper(BaseScraper):
 
         return jobs
 
-    def _parse_rss_item(self, item: ET.Element, category: str) -> dict[str, Any] | None:
+    def _parse_rss_item(self, item: Element, category: str) -> dict[str, Any] | None:
         """Parse a single RSS item into job data."""
         try:
             # Extract data from RSS item
