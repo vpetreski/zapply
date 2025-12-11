@@ -7,7 +7,7 @@ from typing import Any
 from playwright.async_api import async_playwright, Browser, Page
 
 from app.scraper.base import BaseScraper
-from app.utils import log_to_console
+from app.utils import log_to_console, resolve_redirect_url
 
 
 class WorkingNomadsScraper(BaseScraper):
@@ -253,18 +253,25 @@ class WorkingNomadsScraper(BaseScraper):
             # Apply button URL
             apply_button = await self.page.query_selector('a:has-text("Apply"), button:has-text("Apply")')
             apply_url = None
+            apply_url_raw = None  # Store original before redirect resolution
             if apply_button:
                 apply_url = await apply_button.get_attribute('href')
                 # Make absolute URL if relative
                 if apply_url and not apply_url.startswith('http'):
                     apply_url = f"{self.base_url}{apply_url}"
 
+                # Resolve redirect URLs to get the actual job posting URL
+                # This is important for deduplication across job sources
+                if apply_url:
+                    apply_url_raw = apply_url
+                    apply_url = await resolve_redirect_url(apply_url)
+
             # Full job page URL
             full_url = f"{self.base_url}/jobs/{slug}"
 
             return {
                 "id": slug,
-                "url": apply_url or full_url,  # Prefer apply URL
+                "url": apply_url or full_url,  # Prefer resolved apply URL
                 "title": title,
                 "company": company,
                 "description": description,
@@ -275,7 +282,8 @@ class WorkingNomadsScraper(BaseScraper):
                 "raw_data": {
                     "slug": slug,
                     "job_page_url": full_url,
-                    "apply_url": apply_url,
+                    "apply_url_raw": apply_url_raw,  # Original Working Nomads redirect URL
+                    "apply_url_resolved": apply_url,  # Resolved actual job URL
                 }
             }
 
