@@ -28,9 +28,10 @@ class WorkingNomadsScraper(BaseScraper):
         super().__init__(credentials, settings)
 
         # Get credentials from init params or fall back to config
-        if credentials:
-            self.username = credentials.get("username", "")
-            self.password = credentials.get("password", "")
+        # Check if credentials have actual values (not just empty strings)
+        if credentials and credentials.get("username") and credentials.get("password"):
+            self.username = credentials["username"]
+            self.password = credentials["password"]
         else:
             # Fallback to config for backward compatibility
             from app.config import settings as app_settings
