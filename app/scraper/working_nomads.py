@@ -1,23 +1,44 @@
 """Working Nomads job scraper."""
 
-import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from playwright.async_api import async_playwright, Browser, Page
 
 from app.scraper.base import BaseScraper
-from app.utils import log_to_console
+from app.scraper.registry import ScraperRegistry
+from app.utils import log_to_console, resolve_redirect_url
 
 
+@ScraperRegistry.register("working_nomads")
 class WorkingNomadsScraper(BaseScraper):
     """Scraper for Working Nomads job board."""
 
-    def __init__(self) -> None:
+    SOURCE_NAME = "working_nomads"
+    SOURCE_LABEL = "Working Nomads"
+    SOURCE_DESCRIPTION = "Remote job board for digital nomads with development and tech positions"
+    REQUIRES_LOGIN = True
+    REQUIRED_CREDENTIALS = ["username", "password"]
+
+    def __init__(
+        self,
+        credentials: dict[str, str] | None = None,
+        settings: dict[str, Any] | None = None
+    ) -> None:
         """Initialize Working Nomads scraper."""
-        from app.config import settings
-        self.username = settings.working_nomads_username
-        self.password = settings.working_nomads_password
+        super().__init__(credentials, settings)
+
+        # Get credentials from init params or fall back to config
+        # Check if credentials have actual values (not just empty strings)
+        if credentials and credentials.get("username") and credentials.get("password"):
+            self.username = credentials["username"]
+            self.password = credentials["password"]
+        else:
+            # Fallback to config for backward compatibility
+            from app.config import settings as app_settings
+            self.username = app_settings.working_nomads_username
+            self.password = app_settings.working_nomads_password
+
         self.base_url = "https://www.workingnomads.com"
         self.login_url = f"{self.base_url}/users/sign_in"
         self.jobs_url = f"{self.base_url}/jobs"
@@ -61,14 +82,27 @@ class WorkingNomadsScraper(BaseScraper):
             log_to_console(f"❌ Login failed: {str(e)}")
             return False
 
+    def _get_filter_url(self) -> str:
+        """Build filter URL from settings or use defaults."""
+        # Get filter settings
+        category = self.settings.get("category", "development")
+        location = self.settings.get("location", "anywhere,colombia")
+        posted_days = self.settings.get("posted_days", 7)
+
+        return f"{self.jobs_url}?category={category}&location={location}&postedDate={posted_days}"
+
     async def _set_filters(self) -> None:
-        """Set job filters: Development category + Anywhere,Colombia locations + Last 7 Days."""
+        """Set job filters based on settings."""
         if not self.page:
             return
 
-        log_to_console("🔍 Setting filters (Development + Anywhere,Colombia + Last 7 Days)...")
+        category = self.settings.get("category", "development")
+        location = self.settings.get("location", "anywhere,colombia")
+        posted_days = self.settings.get("posted_days", 7)
 
-        filter_url = f"{self.jobs_url}?category=development&location=anywhere,colombia&postedDate=7"
+        log_to_console(f"🔍 Setting filters (category={category}, location={location}, days={posted_days})...")
+
+        filter_url = self._get_filter_url()
         await self.page.goto(filter_url, wait_until="networkidle")
 
         log_to_console("✅ Filters applied!")
@@ -206,7 +240,10 @@ class WorkingNomadsScraper(BaseScraper):
 
         try:
             # Navigate to job detail page with filters to maintain context
-            job_url = f"{self.jobs_url}?category=development&location=anywhere,colombia&postedDate=7&job={slug}"
+            category = self.settings.get("category", "development")
+            location = self.settings.get("location", "anywhere,colombia")
+            posted_days = self.settings.get("posted_days", 7)
+            job_url = f"{self.jobs_url}?category={category}&location={location}&postedDate={posted_days}&job={slug}"
             await self.page.goto(job_url, wait_until="networkidle")
             await self.page.wait_for_timeout(500)
 
@@ -240,7 +277,7 @@ class WorkingNomadsScraper(BaseScraper):
             description = '\n\n'.join(description_parts) if description_parts else ""
 
             # Location (look for "Anywhere" or location text)
-            location = "Anywhere"  # Default since we filtered for "Anywhere"
+            location_text = "Anywhere"  # Default since we filtered for "Anywhere"
 
             # Tags (look for badge/tag elements)
             tag_elements = await self.page.query_selector_all('span.badge, .tag, [class*="tag"]')
@@ -253,29 +290,40 @@ class WorkingNomadsScraper(BaseScraper):
             # Apply button URL
             apply_button = await self.page.query_selector('a:has-text("Apply"), button:has-text("Apply")')
             apply_url = None
+            apply_url_raw = None  # Store original before redirect resolution
+            resolved_url = None
             if apply_button:
                 apply_url = await apply_button.get_attribute('href')
                 # Make absolute URL if relative
                 if apply_url and not apply_url.startswith('http'):
                     apply_url = f"{self.base_url}{apply_url}"
 
+                # Resolve redirect URLs to get the actual job posting URL
+                # This is important for deduplication across job sources
+                if apply_url:
+                    apply_url_raw = apply_url
+                    resolved_url = await resolve_redirect_url(apply_url)
+                    apply_url = resolved_url
+
             # Full job page URL
             full_url = f"{self.base_url}/jobs/{slug}"
 
             return {
                 "id": slug,
-                "url": apply_url or full_url,  # Prefer apply URL
+                "url": apply_url or full_url,  # Prefer resolved apply URL
+                "resolved_url": resolved_url,  # For cross-source deduplication
                 "title": title,
                 "company": company,
                 "description": description,
                 "requirements": None,  # Could parse separately if needed
-                "location": location,
+                "location": location_text,
                 "salary": None,  # Parse if available
                 "tags": tags if tags else None,
                 "raw_data": {
                     "slug": slug,
                     "job_page_url": full_url,
-                    "apply_url": apply_url,
+                    "apply_url_raw": apply_url_raw,  # Original Working Nomads redirect URL
+                    "apply_url_resolved": resolved_url,  # Resolved actual job URL
                 }
             }
 
@@ -288,7 +336,8 @@ class WorkingNomadsScraper(BaseScraper):
         since_days: int = 1,
         progress_callback: Callable[[str, str], Awaitable[None]] | None = None,
         job_limit: int = 0,
-        existing_slugs: set[str] | None = None
+        existing_slugs: set[str] | None = None,
+        **kwargs
     ) -> list[dict[str, Any]]:
         """
         Scrape jobs from Working Nomads.
@@ -299,6 +348,7 @@ class WorkingNomadsScraper(BaseScraper):
                                Signature: async def callback(message: str, level: str) -> None
             job_limit: Maximum number of jobs to load from the listing page (0 = unlimited)
             existing_slugs: Set of job slugs that already exist in the database (for deduplication)
+            **kwargs: Additional arguments (ignored)
 
         Returns:
             List of normalized job dictionaries
@@ -324,8 +374,11 @@ class WorkingNomadsScraper(BaseScraper):
                 return jobs
 
             # Set filters
+            category = self.settings.get("category", "development")
+            location = self.settings.get("location", "anywhere,colombia")
+            posted_days = self.settings.get("posted_days", 7)
             if progress_callback:
-                await progress_callback("Applying filters (Development + Anywhere,Colombia + Last 7 Days)...", "info")
+                await progress_callback(f"Applying filters (category={category}, location={location}, days={posted_days})...", "info")
             await self._set_filters()
 
             # Load jobs (respecting limit from the start)
@@ -398,7 +451,3 @@ class WorkingNomadsScraper(BaseScraper):
             log_to_console("🔒 Browser closed")
 
         return jobs
-
-    def get_source_name(self) -> str:
-        """Get source name."""
-        return "working_nomads"

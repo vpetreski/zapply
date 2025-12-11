@@ -1,15 +1,30 @@
 """Scraper service to handle job scraping, matching, and saving to database."""
 
+import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
 
 from app.config import settings
-from app.models import AppSettings, Job, Run, RunPhase, RunStatus, RunTriggerType, UserProfile
-from app.schemas import JobCreate
-from app.scraper import WorkingNomadsScraper
+from app.database import async_session_maker
+from app.models import (
+    AppSettings,
+    Job,
+    Run,
+    RunPhase,
+    RunStatus,
+    RunTriggerType,
+    ScraperSource,
+    SourceRun,
+    SourceRunStatus,
+    UserProfile,
+)
+from app.scraper import ScraperRegistry
 from app.services.matching_service import match_jobs
+from app.services.source_service import get_enabled_sources, get_source_credentials
 from app.utils import log_to_console
 
 # PostgreSQL advisory lock ID for scraper runs (arbitrary but consistent number)
@@ -17,6 +32,18 @@ SCRAPER_LOCK_ID = 12345678
 
 # Maximum time a run can be "running" before it's considered stale (in minutes)
 STALE_RUN_TIMEOUT_MINUTES = 30
+
+
+@dataclass
+class ScrapeResult:
+    """Result from scraping a single source."""
+    source_name: str
+    source_label: str
+    source_run_id: int
+    jobs_data: list[dict] = field(default_factory=list)
+    jobs_found: int = 0
+    error: str | None = None
+    success: bool = True
 
 
 async def get_setting(db: AsyncSession, key: str, default: str = "") -> str:
@@ -40,8 +67,21 @@ def add_log(run: Run, message: str, level: str = "info") -> None:
     })
 
     # Mark the logs field as modified so SQLAlchemy detects the change
-    from sqlalchemy.orm import attributes
     attributes.flag_modified(run, "logs")
+
+
+def add_source_log(source_run: SourceRun, message: str, level: str = "info") -> None:
+    """Add a log entry to a source run."""
+    if source_run.logs is None:
+        source_run.logs = []
+
+    source_run.logs.append({
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+        "level": level,
+        "message": message
+    })
+
+    attributes.flag_modified(source_run, "logs")
 
 
 async def cleanup_stale_runs(db: AsyncSession) -> int:
@@ -98,18 +138,307 @@ async def release_scraper_lock(db: AsyncSession) -> None:
     log_to_console("🔓 Released scraper lock")
 
 
-async def scrape_and_save_jobs(
-    db: AsyncSession, trigger_type: str = RunTriggerType.MANUAL.value
+async def scrape_source_parallel(
+    run_id: int,
+    source_name: str,
+    source_label: str,
+    source_settings: dict | None,
+    source_credentials_prefix: str | None,
+    job_limit: int = 0
+) -> ScrapeResult:
+    """
+    Scrape jobs from a single source (designed for parallel execution).
+
+    Uses its own DB session for status updates.
+    Returns scraped job data without saving to DB (dedup happens later).
+
+    Args:
+        run_id: Parent Run ID
+        source_name: Source name (e.g., "working_nomads")
+        source_label: Source display label
+        source_settings: Source-specific settings dict
+        source_credentials_prefix: Env var prefix for credentials
+        job_limit: Max jobs to scrape (0 = unlimited)
+
+    Returns:
+        ScrapeResult with jobs_data list and metadata
+    """
+    result = ScrapeResult(
+        source_name=source_name,
+        source_label=source_label,
+        source_run_id=0,
+    )
+
+    async with async_session_maker() as db:
+        try:
+            # Create source run record
+            source_run = SourceRun(
+                run_id=run_id,
+                source_name=source_name,
+                status=SourceRunStatus.RUNNING.value,
+                logs=[],
+                started_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            )
+            db.add(source_run)
+            await db.commit()
+            await db.refresh(source_run)
+            result.source_run_id = source_run.id
+
+            log_to_console(f"\n{'='*60}")
+            log_to_console(f"🔍 Starting scrape: {source_label}")
+            log_to_console(f"{'='*60}")
+
+            add_source_log(source_run, f"Starting scrape for {source_label}", "info")
+
+            # Also log to parent run
+            run_result = await db.execute(select(Run).where(Run.id == run_id))
+            run = run_result.scalar_one_or_none()
+            if run:
+                add_log(run, f"Starting {source_label} scraper", "info")
+            await db.commit()
+
+            # Check if scraper is registered
+            if not ScraperRegistry.is_registered(source_name):
+                raise ValueError(f"Scraper '{source_name}' is not registered")
+
+            # Get credentials and create scraper instance
+            credentials = {}
+            if source_credentials_prefix:
+                import os
+                credentials = {
+                    "username": os.getenv(f"{source_credentials_prefix}_USERNAME", ""),
+                    "password": os.getenv(f"{source_credentials_prefix}_PASSWORD", ""),
+                    "api_key": os.getenv(f"{source_credentials_prefix}_API_KEY", ""),
+                }
+
+            scraper = ScraperRegistry.create_instance(
+                source_name,
+                credentials=credentials,
+                settings=source_settings or {}
+            )
+
+            if not scraper:
+                raise ValueError(f"Failed to create scraper instance for '{source_name}'")
+
+            # Get existing source_ids for this source (for same-source dedup during scrape)
+            existing_result = await db.execute(
+                select(Job.source_id).filter(Job.source == source_name)
+            )
+            existing_slugs = set(row[0] for row in existing_result.fetchall())
+
+            log_to_console(f"📥 Found {len(existing_slugs)} existing jobs for {source_name}")
+            add_source_log(source_run, f"Found {len(existing_slugs)} existing jobs", "info")
+            await db.commit()
+
+            # Progress callback for real-time updates
+            async def progress_callback(message: str, level: str = "info"):
+                add_source_log(source_run, message, level)
+                if run:
+                    add_log(run, f"[{source_label}] {message}", level)
+                await db.commit()
+
+            # Scrape jobs
+            jobs_data = await scraper.scrape(
+                progress_callback=progress_callback,
+                job_limit=job_limit,
+                existing_slugs=existing_slugs
+            )
+
+            result.jobs_data = jobs_data
+            result.jobs_found = len(jobs_data)
+            source_run.jobs_found = len(jobs_data)
+
+            add_source_log(source_run, f"Scraping complete: {len(jobs_data)} jobs found", "success")
+            if run:
+                add_log(run, f"[{source_label}] Scraping complete: {len(jobs_data)} jobs found", "success")
+            await db.commit()
+
+            log_to_console(f"\n✅ {source_label} scraping complete: {len(jobs_data)} jobs found")
+
+        except Exception as e:
+            error_msg = str(e)
+            result.error = error_msg
+            result.success = False
+
+            # Update source run with error
+            source_run_result = await db.execute(
+                select(SourceRun).where(SourceRun.id == result.source_run_id)
+            )
+            source_run = source_run_result.scalar_one_or_none()
+            if source_run:
+                source_run.status = SourceRunStatus.FAILED.value
+                source_run.error_message = error_msg
+                source_run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                source_run.duration_seconds = (source_run.completed_at - source_run.started_at).total_seconds()
+                add_source_log(source_run, f"Failed: {error_msg}", "error")
+
+            run_result = await db.execute(select(Run).where(Run.id == run_id))
+            run = run_result.scalar_one_or_none()
+            if run:
+                add_log(run, f"[{source_label}] Failed: {error_msg}", "error")
+            await db.commit()
+
+            log_to_console(f"\n❌ {source_label} failed: {error_msg}")
+
+    return result
+
+
+async def save_jobs_and_finalize_source_runs(
+    db: AsyncSession,
+    run: Run,
+    scrape_results: list[ScrapeResult]
 ) -> dict[str, int]:
     """
-    Scrape jobs from Working Nomads and save to database.
+    Save scraped jobs to database with cross-source deduplication.
+    Finalize source run records with final stats.
+
+    Args:
+        db: Database session
+        run: Parent Run record
+        scrape_results: List of ScrapeResult from parallel scraping
+
+    Returns:
+        Aggregate stats dict
+    """
+    total_new = 0
+    total_duplicate = 0
+    total_failed = 0
+    total_found = 0
+
+    # Track resolved URLs we've seen in this batch for cross-source dedup
+    seen_resolved_urls: set[str] = set()
+
+    # Get all existing resolved URLs from database
+    existing_urls_result = await db.execute(
+        select(Job.resolved_url).where(Job.resolved_url.isnot(None))
+    )
+    existing_resolved_urls = set(row[0] for row in existing_urls_result.fetchall())
+
+    for result in scrape_results:
+        if not result.success:
+            # Source already marked as failed, skip
+            continue
+
+        source_run_result = await db.execute(
+            select(SourceRun).where(SourceRun.id == result.source_run_id)
+        )
+        source_run = source_run_result.scalar_one_or_none()
+        if not source_run:
+            continue
+
+        # Get existing source_ids for this source
+        existing_source_ids_result = await db.execute(
+            select(Job.source_id).filter(Job.source == result.source_name)
+        )
+        existing_source_ids = set(row[0] for row in existing_source_ids_result.fetchall())
+
+        jobs_new = 0
+        jobs_duplicate = 0
+        jobs_failed = 0
+
+        add_source_log(source_run, f"Saving jobs to database...", "info")
+        add_log(run, f"[{result.source_label}] Saving jobs to database...", "info")
+        await db.commit()
+
+        for job_data in result.jobs_data:
+            try:
+                source_id = job_data.get("source_id")
+
+                # Check same-source deduplication
+                if source_id in existing_source_ids:
+                    jobs_duplicate += 1
+                    continue
+
+                # Check cross-source deduplication via resolved_url
+                resolved_url = job_data.get("resolved_url")
+                if resolved_url:
+                    # Check against DB and this batch
+                    if resolved_url in existing_resolved_urls or resolved_url in seen_resolved_urls:
+                        log_to_console(f"  ⏭️ Cross-source duplicate: {job_data['title']}")
+                        jobs_duplicate += 1
+                        continue
+                    seen_resolved_urls.add(resolved_url)
+
+                # Create new job
+                job = Job(
+                    source=job_data["source"],
+                    source_id=job_data["source_id"],
+                    url=job_data["url"],
+                    resolved_url=resolved_url,
+                    title=job_data["title"],
+                    company=job_data["company"],
+                    description=job_data["description"],
+                    requirements=job_data.get("requirements"),
+                    location=job_data.get("location"),
+                    salary=job_data.get("salary"),
+                    tags=job_data.get("tags"),
+                    raw_data=job_data.get("raw_data"),
+                )
+                db.add(job)
+                jobs_new += 1
+                existing_source_ids.add(source_id)
+                if resolved_url:
+                    existing_resolved_urls.add(resolved_url)
+
+            except Exception as e:
+                jobs_failed += 1
+                log_to_console(f"  ❌ Failed to save job: {e}")
+
+        await db.commit()
+
+        # Update source run stats
+        source_run.jobs_new = jobs_new
+        source_run.jobs_duplicate = jobs_duplicate
+        source_run.jobs_failed = jobs_failed
+        source_run.status = SourceRunStatus.COMPLETED.value
+        source_run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        source_run.duration_seconds = (source_run.completed_at - source_run.started_at).total_seconds()
+
+        add_source_log(
+            source_run,
+            f"Completed: {jobs_new} new, {jobs_duplicate} duplicates, {jobs_failed} failed",
+            "success"
+        )
+        add_log(
+            run,
+            f"[{result.source_label}] Completed: {jobs_new} new, {jobs_duplicate} duplicates, {jobs_failed} failed",
+            "success"
+        )
+        await db.commit()
+
+        log_to_console(f"\n✅ {result.source_label} saved: {jobs_new} new, {jobs_duplicate} duplicates, {jobs_failed} failed")
+
+        total_new += jobs_new
+        total_duplicate += jobs_duplicate
+        total_failed += jobs_failed
+        total_found += result.jobs_found
+
+    return {
+        "total": total_found,
+        "new": total_new,
+        "duplicate": total_duplicate,
+        "failed": total_failed,
+    }
+
+
+async def scrape_and_save_jobs(
+    db: AsyncSession,
+    trigger_type: str = RunTriggerType.MANUAL.value,
+    source_names: list[str] | None = None
+) -> dict[str, int]:
+    """
+    Scrape jobs from all enabled sources (or specific sources) and save to database.
+
+    Scraping runs in PARALLEL for speed.
+    Deduplication and saving runs SEQUENTIALLY for correctness.
 
     Args:
         db: Database session
         trigger_type: How the run was triggered (manual/scheduled_daily/scheduled_hourly)
+        source_names: Optional list of specific sources to run (None = all enabled)
 
     Returns:
-        Dictionary with statistics: {total, new, existing, failed}
+        Dictionary with aggregate statistics
 
     Raises:
         ValueError: If no user profile exists or if a run is already in progress
@@ -127,9 +456,9 @@ async def scrape_and_save_jobs(
 
     log_to_console("🔒 Acquired scraper lock")
 
-    # Wrap everything in try/finally to ensure lock is ALWAYS released
-    run = None  # Initialize run outside try so we can access it in except
-    stats = {"total": 0, "new": 0, "existing": 0, "failed": 0}  # Initialize stats too
+    run = None
+    stats = {"total": 0, "new": 0, "existing": 0, "failed": 0, "sources_run": 0, "sources_failed": 0}
+
     try:
         # STEP 3: Double-check for running runs (belt AND suspenders)
         running_result = await db.execute(
@@ -152,6 +481,26 @@ async def scrape_and_save_jobs(
                 "The profile is required for job matching."
             )
 
+        # Get sources to scrape
+        if source_names:
+            # Get specific sources
+            sources_result = await db.execute(
+                select(ScraperSource)
+                .where(ScraperSource.name.in_(source_names))
+                .where(ScraperSource.enabled == True)  # noqa: E712
+                .order_by(ScraperSource.priority)
+            )
+            sources = list(sources_result.scalars().all())
+        else:
+            # Get all enabled sources
+            sources = await get_enabled_sources(db)
+
+        if not sources:
+            raise ValueError("No enabled scraper sources found. Enable at least one source in Admin settings.")
+
+        source_labels = [s.label for s in sources]
+        log_to_console(f"\n🎯 Running scrapers in parallel: {', '.join(source_labels)}")
+
         # Create run record
         run = Run(
             status=RunStatus.RUNNING.value,
@@ -166,155 +515,114 @@ async def scrape_and_save_jobs(
 
         log_to_console(f"📋 Created run #{run.id}")
 
-        add_log(run, "Starting job scraping from Working Nomads", "info")
-        await db.commit()
-
-        # Initialize scraper
-        scraper = WorkingNomadsScraper()
-        add_log(run, "Initialized Working Nomads scraper", "info")
-        await db.commit()
-
-        # Fetch existing job slugs from database for deduplication
-        log_to_console("📥 Fetching existing job slugs from database...")
-        add_log(run, "Fetching existing job slugs from database...", "info")
-        await db.commit()
-
-        existing_slugs_result = await db.execute(
-            select(Job.source_id).filter(Job.source == "working_nomads")
-        )
-        existing_slugs = set(row[0] for row in existing_slugs_result.fetchall())
-
-        log_to_console(f"✅ Found {len(existing_slugs)} existing job slugs in database")
-        add_log(run, f"Found {len(existing_slugs)} existing job slugs in database", "info")
-        await db.commit()
-
-        # Scrape jobs
-        log_to_console("🎯 Starting job scraping...")
-        add_log(run, "Beginning job scraping process", "info")
+        add_log(run, f"Starting parallel scraping from {len(sources)} source(s): {', '.join(source_labels)}", "info")
         await db.commit()
 
         # Get scrape job limit from database
         job_limit_str = await get_setting(db, "scrape_job_limit", "0")
         job_limit = int(job_limit_str)
 
-        # Pass callback to scraper for progress updates
-        async def progress_callback(message: str, level: str = "info"):
-            add_log(run, message, level)
-            await db.commit()
+        # PARALLEL SCRAPING - each source runs concurrently
+        scrape_tasks = [
+            scrape_source_parallel(
+                run_id=run.id,
+                source_name=source.name,
+                source_label=source.label,
+                source_settings=source.settings,
+                source_credentials_prefix=source.credentials_env_prefix,
+                job_limit=job_limit,
+            )
+            for source in sources
+        ]
 
-        jobs_data = await scraper.scrape(
-            progress_callback=progress_callback,
-            job_limit=job_limit,
-            existing_slugs=existing_slugs
-        )
-        stats["total"] = len(jobs_data)
+        log_to_console(f"\n🚀 Launching {len(scrape_tasks)} parallel scrape task(s)...")
+        scrape_results = await asyncio.gather(*scrape_tasks, return_exceptions=True)
 
-        add_log(run, f"Scraped {len(jobs_data)} jobs from Working Nomads", "success")
+        # Handle any exceptions from gather
+        processed_results: list[ScrapeResult] = []
+        for i, result in enumerate(scrape_results):
+            if isinstance(result, Exception):
+                log_to_console(f"❌ Scrape task {i} raised exception: {result}")
+                # Create a failed result
+                processed_results.append(ScrapeResult(
+                    source_name=sources[i].name,
+                    source_label=sources[i].label,
+                    source_run_id=0,
+                    error=str(result),
+                    success=False,
+                ))
+            else:
+                processed_results.append(result)
+
+        log_to_console(f"\n📦 All scraping complete. Saving jobs with deduplication...")
+        add_log(run, "All scraping complete. Saving jobs with cross-source deduplication...", "info")
         await db.commit()
 
-        # Save to database
-        log_to_console(f"\n💾 Saving {len(jobs_data)} jobs to database...")
-        add_log(run, f"Saving {len(jobs_data)} jobs to database", "info")
+        # SEQUENTIAL SAVE with cross-source deduplication
+        save_stats = await save_jobs_and_finalize_source_runs(db, run, processed_results)
+
+        # Calculate final stats
+        sources_completed = sum(1 for r in processed_results if r.success)
+        sources_failed = sum(1 for r in processed_results if not r.success)
+
+        stats = {
+            "total": save_stats["total"],
+            "new": save_stats["new"],
+            "existing": save_stats["duplicate"],
+            "failed": save_stats["failed"],
+            "sources_run": sources_completed,
+            "sources_failed": sources_failed,
+        }
+
+        log_to_console(f"\n📊 Scraping Summary (all sources):")
+        log_to_console(f"  Total jobs found: {save_stats['total']}")
+        log_to_console(f"  New jobs saved: {save_stats['new']}")
+        log_to_console(f"  Duplicates skipped: {save_stats['duplicate']}")
+        log_to_console(f"  Failed: {save_stats['failed']}")
+        log_to_console(f"  Sources completed: {sources_completed}/{len(sources)}")
+
+        add_log(run, f"Scraping completed: {save_stats['new']} new jobs from {sources_completed} sources", "success")
         await db.commit()
-
-        for i, job_data in enumerate(jobs_data, 1):
-            try:
-                # Check if job already exists (use in-memory set for O(1) lookup)
-                source_id = job_data.get("source_id")
-
-                if source_id in existing_slugs:
-                    if i % 10 == 0 or i == 1:
-                        log_to_console(f"  [{i}/{len(jobs_data)}] ⏭️  Already exists: {job_data['title']}")
-                    stats["existing"] += 1
-                    continue
-
-                # Create new job
-                job = Job(
-                    source=job_data["source"],
-                    source_id=job_data["source_id"],
-                    url=job_data["url"],
-                    title=job_data["title"],
-                    company=job_data["company"],
-                    description=job_data["description"],
-                    requirements=job_data.get("requirements"),
-                    location=job_data.get("location"),
-                    salary=job_data.get("salary"),
-                    tags=job_data.get("tags"),
-                    raw_data=job_data.get("raw_data"),
-                )
-
-                db.add(job)
-                stats["new"] += 1
-                log_to_console(f"  [{i}/{len(jobs_data)}] ✅ NEW: {job.title} @ {job.company}")
-
-            except Exception as e:
-                stats["failed"] += 1
-                log_to_console(f"  [{i}/{len(jobs_data)}] ❌ FAILED to save: {str(e)}")
-                if settings.debug:
-                    import traceback
-                    log_to_console(f"     Traceback:\n{traceback.format_exc()}")
-
-        # Commit all changes
-        await db.commit()
-
-        log_to_console(f"\n✅ Scraping phase completed!")
-        log_to_console(f"   Total scraped: {stats['total']}")
-        log_to_console(f"   ✅ New jobs: {stats['new']}")
-        log_to_console(f"   ⏭️  Duplicates: {stats['existing']}")
-        log_to_console(f"   ❌ Failed: {stats['failed']}")
-
-        add_log(run, f"Scraping phase completed successfully!", "success")
-        add_log(run, f"Total: {stats['total']}, New: {stats['new']}, Duplicates: {stats['existing']}, Failed: {stats['failed']}", "info")
-        await db.commit()
-
-        log_to_console(f"\n📊 Scraping Summary:")
-        log_to_console(f"  Total scraped: {stats['total']}")
-        log_to_console(f"  New jobs saved: {stats['new']}")
-        log_to_console(f"  Already existed: {stats['existing']}")
-        log_to_console(f"  Failed: {stats['failed']}")
 
         # Phase 2: Match jobs with AI
-        if stats["new"] > 0:
+        total_new = save_stats["new"]
+        if total_new > 0:
             log_to_console(f"\n🤖 Starting AI matching phase...")
             run.phase = RunPhase.MATCHING.value
             await db.commit()
 
             matching_stats = await match_jobs(db, run)
 
-            # Update run stats with matching results
+            # Update run stats
             run.stats = {
-                "jobs_scraped": stats["total"],
-                "new_jobs": stats["new"],
-                "duplicate_jobs": stats["existing"],
-                "failed_jobs": stats["failed"],
+                "jobs_scraped": save_stats["total"],
+                "new_jobs": save_stats["new"],
+                "duplicate_jobs": save_stats["duplicate"],
+                "failed_jobs": save_stats["failed"],
                 "jobs_matched": matching_stats["matched"],
                 "jobs_rejected": matching_stats["rejected"],
                 "matching_errors": matching_stats["errors"],
                 "average_match_score": matching_stats["average_score"],
-                "source": "working_nomads",
-                "filters": {
-                    "category": "development",
-                    "location": "anywhere,colombia"
-                }
+                "sources_run": sources_completed,
+                "sources_failed": sources_failed,
+                "sources": [s.name for s in sources],
             }
             await db.commit()
         else:
-            log_to_console(f"\n⏭️  No new jobs to match, skipping matching phase")
+            log_to_console(f"\n⏭️ No new jobs to match, skipping matching phase")
             run.stats = {
-                "jobs_scraped": stats["total"],
-                "new_jobs": stats["new"],
-                "duplicate_jobs": stats["existing"],
-                "failed_jobs": stats["failed"],
-                "source": "working_nomads",
-                "filters": {
-                    "category": "development",
-                    "location": "anywhere,colombia"
-                }
+                "jobs_scraped": save_stats["total"],
+                "new_jobs": save_stats["new"],
+                "duplicate_jobs": save_stats["duplicate"],
+                "failed_jobs": save_stats["failed"],
+                "sources_run": sources_completed,
+                "sources_failed": sources_failed,
+                "sources": [s.name for s in sources],
             }
             await db.commit()
 
         # Complete the run
-        run.status = RunStatus.COMPLETED.value
+        run.status = RunStatus.COMPLETED.value if sources_failed == 0 else RunStatus.PARTIAL.value
         run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
         add_log(run, f"Run completed successfully!", "success")

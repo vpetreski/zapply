@@ -12,9 +12,10 @@ from slowapi.util import get_remote_address
 
 from app import __version__
 from app.config import settings
-from app.database import engine
-from app.routers import admin, auth, health, jobs, profile, runs, scraper, stats
+from app.database import engine, get_db
+from app.routers import admin, auth, health, jobs, profile, runs, scraper, sources, stats
 from app.services.scheduler_service import start_scheduler_async, stop_scheduler, get_scheduler_status
+from app.services.source_service import sync_sources_with_registry
 from app.utils import log_to_console, run_migrations
 
 # Configure logging - simple format for console output
@@ -38,6 +39,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Run database migrations
     run_migrations()
+
+    # Sync scraper sources with registry (auto-creates DB records for new scrapers)
+    try:
+        async for db in get_db():
+            result = await sync_sources_with_registry(db)
+            if result["added"]:
+                logger.info(f"✓ Added {len(result['added'])} new scraper source(s): {', '.join(result['added'])}")
+            break
+    except Exception as e:
+        logger.error(f"❌ Failed to sync scraper sources: {e}")
 
     # Validate configuration
     if not settings.anthropic_api_key:
@@ -112,6 +123,7 @@ app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(sources.router, tags=["Sources"])
 
 
 @app.get("/")

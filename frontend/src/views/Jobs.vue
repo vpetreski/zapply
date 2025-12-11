@@ -35,6 +35,16 @@
             <option value="">All</option>
           </select>
         </div>
+
+        <div class="filter-group">
+          <label for="source-filter">Source:</label>
+          <select id="source-filter" v-model="sourceFilter" @change="resetAndFetch" class="filter-select">
+            <option value="">All Sources</option>
+            <option v-for="source in sources" :key="source.name" :value="source.name">
+              {{ source.label }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -69,6 +79,7 @@
             <div class="job-footer-left">
               <span v-if="job.location" class="text-muted">📍 {{ job.location }}</span>
               <span class="text-muted timestamp">🕐 {{ formatTimestamp(job.created_at) }}</span>
+              <span class="text-muted source-label">{{ formatSourceName(job.source) }}</span>
             </div>
             <div class="job-footer-right">
               <button
@@ -206,6 +217,8 @@ const loadingMore = ref(false)
 const statusFilter = ref('matched')
 const matchingSourceFilter = ref('')
 const daysFilter = ref('0')
+const sourceFilter = ref('')
+const sources = ref([])
 const selectedJob = ref(null)
 const updatingJobId = ref(null)
 
@@ -213,6 +226,15 @@ const updatingJobId = ref(null)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+
+const fetchSources = async () => {
+  try {
+    const response = await axios.get('/api/sources')
+    sources.value = response.data
+  } catch (error) {
+    console.error('Failed to fetch sources:', error)
+  }
+}
 
 const hasMore = computed(() => jobs.value.length < total.value)
 
@@ -246,6 +268,10 @@ const fetchJobs = async (append = false) => {
 
     if (daysFilter.value) {
       params.days = parseInt(daysFilter.value)
+    }
+
+    if (sourceFilter.value) {
+      params.source = sourceFilter.value
     }
 
     const response = await axios.get('/api/jobs', { params })
@@ -397,7 +423,17 @@ const formatTimestamp = (timestamp) => {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
+const formatSourceName = (sourceName) => {
+  if (!sourceName) return ''
+  // Convert snake_case to Title Case (e.g., "working_nomads" -> "Working Nomads")
+  return sourceName
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 onMounted(() => {
+  fetchSources()
   fetchJobs()
   window.addEventListener('scroll', handleScroll)
 })
@@ -570,6 +606,15 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.source-label {
+  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  background-color: rgba(99, 102, 241, 0.15);
+  border-radius: 0.25rem;
+  color: #a5b4fc;
+  width: fit-content;
 }
 
 .job-footer-right {

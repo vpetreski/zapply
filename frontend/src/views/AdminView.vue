@@ -58,6 +58,34 @@
         {{ limitResult.message }}
       </div>
     </section>
+
+    <!-- Scraper Sources -->
+    <section class="admin-section">
+      <h2>Scraper Sources</h2>
+
+      <div v-if="loadingSources" class="loading-message">Loading sources...</div>
+
+      <div v-else-if="sources.length === 0" class="empty-message">
+        No sources configured.
+      </div>
+
+      <div v-else class="sources-list">
+        <div v-for="source in sources" :key="source.id" class="source-card">
+          <div class="source-header">
+            <span class="source-label">{{ source.label }}</span>
+            <label class="toggle-switch">
+              <input
+                type="checkbox"
+                :checked="source.enabled"
+                @change="toggleSource(source)"
+                :disabled="updatingSource === source.name"
+              />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -66,6 +94,21 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
+// Types
+interface ScraperSource {
+  id: number
+  name: string
+  label: string
+  description: string | null
+  enabled: boolean
+  priority: number
+  credentials_env_prefix: string | null
+  settings: Record<string, any> | null
+  credentials_configured: Record<string, boolean> | null
+  created_at: string
+  updated_at: string
+}
+
 const runFrequency = ref<string>('manual')
 const savingFrequency = ref(false)
 const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
@@ -73,6 +116,11 @@ const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
 const scrapeLimit = ref<number>(0)
 const savingLimit = ref(false)
 const limitResult = ref<{ success: boolean; message: string } | null>(null)
+
+// Sources state
+const sources = ref<ScraperSource[]>([])
+const loadingSources = ref(false)
+const updatingSource = ref<string | null>(null)
 
 async function loadRunFrequency() {
   try {
@@ -145,9 +193,41 @@ async function saveScrapeLimit() {
   }
 }
 
+// Sources functions
+async function loadSources() {
+  loadingSources.value = true
+  try {
+    const response = await axios.get('/api/sources')
+    sources.value = response.data
+  } catch (error) {
+    console.error('Failed to load sources:', error)
+  } finally {
+    loadingSources.value = false
+  }
+}
+
+async function toggleSource(source: ScraperSource) {
+  updatingSource.value = source.name
+  try {
+    const response = await axios.patch(`/api/sources/${source.name}`, {
+      enabled: !source.enabled
+    })
+    // Update the source in the list
+    const index = sources.value.findIndex(s => s.name === source.name)
+    if (index !== -1) {
+      sources.value[index] = response.data
+    }
+  } catch (error: any) {
+    console.error('Failed to update source:', error)
+  } finally {
+    updatingSource.value = null
+  }
+}
+
 onMounted(() => {
   loadRunFrequency()
   loadScrapeLimit()
+  loadSources()
 })
 </script>
 
@@ -265,5 +345,88 @@ h1 {
   background: #3a1a1a;
   color: #ff6666;
   border: 1px solid #aa4444;
+}
+
+/* Sources Section */
+.loading-message,
+.empty-message {
+  color: #888;
+  text-align: center;
+  padding: 2rem;
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.source-card {
+  background: #2a2a2a;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+}
+
+.source-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.source-label {
+  font-size: 1rem;
+  color: #e0e0e0;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #404040;
+  border-radius: 13px;
+  transition: 0.3s;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #e0e0e0;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #22c55e;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

@@ -47,19 +47,36 @@
             </div>
           </div>
 
-          <div class="run-filters">
+          <div class="run-filters" v-if="run.stats?.filters || run.stats?.sources">
             <span class="filters-label">Filters:</span>
             <template v-if="run.stats?.filters">
               <span v-if="run.stats.filters.category" class="badge badge-filter">{{ formatFilterValue(run.stats.filters.category) }}</span>
               <span v-if="run.stats.filters.location" class="badge badge-filter">{{ formatFilterValue(run.stats.filters.location) }}</span>
+              <span v-if="run.stats.filters.posted_days" class="badge badge-filter">Last {{ run.stats.filters.posted_days }} Days</span>
             </template>
-            <span class="badge badge-filter">Last 7 Days</span>
           </div>
 
           <div v-if="run.stats" class="run-stats">
             <div class="stat-item" v-for="(value, key) in filterStats(run.stats)" :key="key">
               <span class="stat-label">{{ formatStatKey(key) }}:</span>
               <span class="stat-value">{{ value }}</span>
+            </div>
+          </div>
+
+          <!-- Source Runs Summary -->
+          <div v-if="run.source_runs && run.source_runs.length > 0" class="source-runs-summary">
+            <span class="sources-label">Sources:</span>
+            <div class="source-badges">
+              <span
+                v-for="sourceRun in run.source_runs"
+                :key="sourceRun.id"
+                :class="['badge', `badge-source-${sourceRun.status}`]"
+                :title="`${sourceRun.source_name}: ${sourceRun.jobs_new} new, ${sourceRun.jobs_duplicate} duplicate`"
+              >
+                {{ formatSourceName(sourceRun.source_name) }}
+                <span v-if="sourceRun.status === 'completed'" class="source-count">{{ sourceRun.jobs_new }}</span>
+                <span v-else-if="sourceRun.status === 'running'" class="source-spinner"></span>
+              </span>
             </div>
           </div>
 
@@ -96,14 +113,12 @@
         </div>
 
         <div class="modal-body">
-          <div class="detail-section">
+          <div class="detail-section" v-if="selectedRun.stats?.filters">
             <h3>Filters</h3>
             <div class="run-filters">
-              <template v-if="selectedRun.stats?.filters">
-                <span v-if="selectedRun.stats.filters.category" class="badge badge-filter">{{ formatFilterValue(selectedRun.stats.filters.category) }}</span>
-                <span v-if="selectedRun.stats.filters.location" class="badge badge-filter">{{ formatFilterValue(selectedRun.stats.filters.location) }}</span>
-              </template>
-              <span class="badge badge-filter">Last 7 Days</span>
+              <span v-if="selectedRun.stats.filters.category" class="badge badge-filter">{{ formatFilterValue(selectedRun.stats.filters.category) }}</span>
+              <span v-if="selectedRun.stats.filters.location" class="badge badge-filter">{{ formatFilterValue(selectedRun.stats.filters.location) }}</span>
+              <span v-if="selectedRun.stats.filters.posted_days" class="badge badge-filter">Last {{ selectedRun.stats.filters.posted_days }} Days</span>
             </div>
           </div>
 
@@ -131,6 +146,47 @@
               <div v-for="(value, key) in filterStats(selectedRun.stats)" :key="key">
                 <span class="detail-label">{{ formatStatKey(key) }}:</span>
                 <span>{{ value }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Source Results Section -->
+          <div v-if="selectedRun.source_runs && selectedRun.source_runs.length > 0" class="detail-section">
+            <h3>Source Results</h3>
+            <div class="source-results">
+              <div
+                v-for="sourceRun in selectedRun.source_runs"
+                :key="sourceRun.id"
+                :class="['source-result-card', `source-result-${sourceRun.status}`]"
+              >
+                <div class="source-result-header">
+                  <span class="source-result-name">{{ formatSourceName(sourceRun.source_name) }}</span>
+                  <span :class="['badge', `badge-source-${sourceRun.status}`]">{{ sourceRun.status }}</span>
+                </div>
+                <div class="source-result-stats">
+                  <div class="source-stat">
+                    <span class="source-stat-value">{{ sourceRun.jobs_found }}</span>
+                    <span class="source-stat-label">Found</span>
+                  </div>
+                  <div class="source-stat source-stat-new">
+                    <span class="source-stat-value">{{ sourceRun.jobs_new }}</span>
+                    <span class="source-stat-label">New</span>
+                  </div>
+                  <div class="source-stat source-stat-duplicate">
+                    <span class="source-stat-value">{{ sourceRun.jobs_duplicate }}</span>
+                    <span class="source-stat-label">Duplicate</span>
+                  </div>
+                  <div v-if="sourceRun.jobs_failed > 0" class="source-stat source-stat-failed">
+                    <span class="source-stat-value">{{ sourceRun.jobs_failed }}</span>
+                    <span class="source-stat-label">Failed</span>
+                  </div>
+                </div>
+                <div v-if="sourceRun.duration_seconds" class="source-result-duration">
+                  Duration: {{ formatDuration(sourceRun.duration_seconds) }}
+                </div>
+                <div v-if="sourceRun.error_message" class="source-result-error">
+                  {{ sourceRun.error_message }}
+                </div>
               </div>
             </div>
           </div>
@@ -186,7 +242,7 @@ const loading = ref(true)
 const loadingMore = ref(false)
 const selectedRun = ref(null)
 const startingRun = ref(false)
-const autoScrollEnabled = ref(false)
+const autoScrollEnabled = ref(true)
 let autoRefreshInterval = null
 let listRefreshInterval = null
 
@@ -262,7 +318,7 @@ const resetAndFetch = async () => {
 
 const openRunDetail = (run) => {
   selectedRun.value = run
-  autoScrollEnabled.value = false // Reset to unchecked when opening
+  autoScrollEnabled.value = true // Reset to checked when opening
 
   // Start auto-refresh if run is still running
   if (run.status === 'running') {
@@ -370,6 +426,15 @@ const formatTriggerType = (triggerType) => {
   }
 
   return typeMap[triggerType] || triggerType
+}
+
+const formatSourceName = (sourceName) => {
+  if (!sourceName) return ''
+  // Convert snake_case to Title Case (e.g., "working_nomads" -> "Working Nomads")
+  return sourceName
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }
 
 const formatLogTime = (timestamp) => {
@@ -900,5 +965,175 @@ onUnmounted(() => {
   gap: 0.75rem;
   padding: 1.5rem;
   border-top: 1px solid var(--border);
+}
+
+/* Source Runs Summary (card view) */
+.source-runs-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.sources-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 0.25rem;
+}
+
+.source-badges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.source-count {
+  margin-left: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.source-spinner {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-left: 0.25rem;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Source status badges */
+.badge-source-pending {
+  background-color: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+.badge-source-running {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.badge-source-completed {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.badge-source-failed {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.badge-source-skipped {
+  background-color: rgba(251, 191, 36, 0.2);
+  color: #fcd34d;
+}
+
+/* Source Results Section (modal) */
+.source-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.source-result-card {
+  padding: 1rem;
+  background-color: var(--bg-darker);
+  border-radius: 0.375rem;
+  border-left: 3px solid var(--border);
+}
+
+.source-result-completed {
+  border-left-color: #22c55e;
+}
+
+.source-result-running {
+  border-left-color: #3b82f6;
+}
+
+.source-result-failed {
+  border-left-color: #ef4444;
+}
+
+.source-result-skipped {
+  border-left-color: #fbbf24;
+}
+
+.source-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.source-result-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.source-result-stats {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.source-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+
+.source-stat-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.source-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.source-stat-new .source-stat-value {
+  color: #86efac;
+}
+
+.source-stat-duplicate .source-stat-value {
+  color: #fcd34d;
+}
+
+.source-stat-failed .source-stat-value {
+  color: #fca5a5;
+}
+
+.source-result-duration {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.source-result-error {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 0.25rem;
+  color: #fca5a5;
+  font-size: 0.875rem;
 }
 </style>

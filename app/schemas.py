@@ -99,3 +99,110 @@ class HealthResponse(BaseModel):
     version: str
     database: str
     scheduler: str
+
+
+# =============================================================================
+# Scraper Source Schemas
+# =============================================================================
+
+
+class ScraperSourceResponse(BaseModel):
+    """Schema for scraper source response."""
+
+    id: int
+    name: str
+    label: str
+    description: Optional[str] = None
+    enabled: bool
+    priority: int
+    credentials_env_prefix: Optional[str] = None
+    settings: Optional[dict[str, Any]] = None
+    credentials_configured: Optional[dict[str, bool]] = None  # Added dynamically
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ScraperSourceUpdate(BaseModel):
+    """Schema for updating a scraper source."""
+
+    enabled: Optional[bool] = None
+    priority: Optional[int] = None
+    settings: Optional[dict[str, Any]] = None
+
+
+class RegisteredScraperResponse(BaseModel):
+    """Schema for registered scraper metadata."""
+
+    name: str
+    label: str
+    description: str
+    requires_login: bool
+
+
+# =============================================================================
+# Source Run Schemas
+# =============================================================================
+
+
+class SourceRunResponse(BaseModel):
+    """Schema for source run response."""
+
+    id: int
+    run_id: int
+    source_name: str
+    status: str
+    jobs_found: int
+    jobs_new: int
+    jobs_duplicate: int
+    jobs_failed: int
+    error_message: Optional[str] = None
+    logs: Optional[list[dict[str, Any]]] = None
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SourceRunListResponse(BaseModel):
+    """Schema for list of source runs."""
+
+    source_runs: list[SourceRunResponse]
+    total: int
+
+
+# =============================================================================
+# Run Schemas (extended)
+# =============================================================================
+
+
+class RunResponse(BaseModel):
+    """Schema for run response with source runs."""
+
+    id: int
+    status: str
+    phase: str
+    trigger_type: str
+    stats: Optional[dict[str, Any]] = None
+    logs: Optional[list[dict[str, Any]]] = None
+    error_message: Optional[str] = None
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+    source_runs: Optional[list[SourceRunResponse]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RunListResponse(BaseModel):
+    """Schema for list of runs."""
+
+    runs: list[RunResponse]
+    total: int
+    page: int
+    page_size: int
