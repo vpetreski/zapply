@@ -25,6 +25,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
+    "defusedxml>=0.7.1",
 ]
 
 [project.optional-dependencies]

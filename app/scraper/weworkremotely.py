@@ -11,7 +11,7 @@ IMPORTANT: Cross-source deduplication is NOT available for WWR jobs.
 This is acceptable for MVP - job overlap is low and manual review catches dupes.
 """
 
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -87,8 +87,8 @@ class WeWorkRemotelyScraper(BaseScraper):
         jobs = []
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=posted_days)
 
-        # Get categories from settings
-        categories = self.settings.get("categories", ["backend", "fullstack"])
+        # Get categories from settings (normalize to lowercase for dict lookup)
+        categories = [c.lower() for c in self.settings.get("categories", ["backend", "fullstack"])]
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             for category in categories:
@@ -117,8 +117,9 @@ class WeWorkRemotelyScraper(BaseScraper):
                         if not job_data:
                             continue
 
-                        # Check date filter
-                        if job_data.get("pub_date") and job_data["pub_date"] < cutoff_date:
+                        # Check date filter (only skip if we can confirm it's too old)
+                        pub_date = job_data.get("pub_date")
+                        if pub_date and pub_date < cutoff_date:
                             continue
 
                         # Check region filter
@@ -296,6 +297,9 @@ class WeWorkRemotelyScraper(BaseScraper):
                 # Normalize the job from RSS data
                 # NOTE: resolved_url is None - WWR jobs cannot participate in
                 # cross-source deduplication due to Cloudflare blocking (see module docstring)
+                # Extract pub_date once to avoid double .get()
+                job_pub_date = job_data.get("pub_date")
+
                 normalized = self.normalize_job({
                     "id": slug,
                     "url": job_url,  # WWR job page URL (not the actual company job URL)
@@ -311,7 +315,7 @@ class WeWorkRemotelyScraper(BaseScraper):
                         "region": job_data.get("region", ""),
                         "job_type": job_data.get("job_type", ""),
                         "category": job_data.get("category", ""),
-                        "pub_date": job_data.get("pub_date").isoformat() if job_data.get("pub_date") else None,
+                        "pub_date": job_pub_date.isoformat() if job_pub_date else None,
                     },
                 })
                 jobs.append(normalized)
