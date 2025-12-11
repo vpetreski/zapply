@@ -35,8 +35,8 @@
 
       <div class="setting-item">
         <label for="scrape-limit" class="setting-label">
-          <span class="label-text">Scrape Job Limit</span>
-          <span class="label-description">Limit the number of jobs scraped per run (useful for testing to reduce cost and time)</span>
+          <span class="label-text">Scrape Job Limit (per source)</span>
+          <span class="label-description">Limit the number of jobs scraped per source (useful for testing to reduce cost and time)</span>
           <span class="label-tip">Recommended: Unlimited for production use</span>
         </label>
         <select
@@ -48,6 +48,7 @@
           style="padding-right: 3rem;"
         >
           <option :value="0">Unlimited</option>
+          <option :value="5">5 jobs</option>
           <option :value="10">10 jobs</option>
           <option :value="20">20 jobs</option>
           <option :value="50">50 jobs</option>

@@ -155,7 +155,11 @@ if job_slug in existing_slugs:
 
 ### Cross-Source Deduplication
 
-Many job aggregators list the same job. We use `resolved_url` to detect these:
+Many job aggregators list the same job. We use `resolved_url` to detect these.
+
+> **Note:** Cross-source dedup only works for sources that can resolve the actual job URL
+> (e.g., Working Nomads). Sources like WWR that only provide their own page URL due to
+> Cloudflare restrictions cannot participate in cross-source deduplication.
 
 **The Problem:**
 ```
@@ -318,6 +322,73 @@ https://www.workingnomads.com/jobs?category=development&location=anywhere,colomb
 **Rate Limiting:**
 - 1-2 second delays between page loads
 - Respects `networkidle` state before scraping
+
+---
+
+### We Work Remotely
+
+| Property | Value |
+|----------|-------|
+| **Name** | `we_work_remotely` |
+| **File** | `app/scraper/weworkremotely.py` |
+| **Type** | RSS-based (no browser, no login needed) |
+| **Auth** | None (public RSS feeds) |
+
+**Environment Variables:** None required
+
+**How it works:**
+1. Fetches job listings from RSS feeds (no Cloudflare, fast)
+2. Parses RSS XML to extract: title, company, region, description, skills
+3. Filters by region (`Anywhere in the World`, `Latin America Only`)
+4. Filters by post date (default: last 7 days)
+5. Returns WWR job page URLs
+
+**RSS Feeds:**
+| Category | URL |
+|----------|-----|
+| Backend | `https://weworkremotely.com/categories/remote-back-end-programming-jobs.rss` |
+| Fullstack | `https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss` |
+
+**Default Settings** (stored in `scraper_sources.settings`):
+```json
+{
+  "categories": ["backend", "fullstack"],
+  "posted_days": 7
+}
+```
+
+**Region Filtering:**
+
+Jobs are only included if region matches:
+- `Anywhere in the World`
+- `Latin America Only`
+
+Jobs with other regions (e.g., `USA Only`) are skipped.
+
+**Deduplication:**
+- Within source: `source_id` (job slug from URL, e.g., `company-job-title`) ✅
+- Cross-source: **Not available** ❌
+
+**Why no cross-source dedup?**
+
+WWR uses Cloudflare protection that blocks headless browsers. We can't programmatically:
+- Login to Pro account
+- Access job detail pages
+- Extract the real Apply URL (which would be used for cross-source dedup)
+
+This means if the same job appears on both Working Nomads and WWR, it will be stored twice.
+This is acceptable because:
+- Job overlap between sources is relatively low
+- The Matcher will evaluate both - same result either way
+- Manual review during matching catches obvious duplicates
+- Low job volume makes this a minor inconvenience
+
+**Manual Application:**
+
+The URL stored is the WWR job page. To apply:
+1. Click "View Job" to open WWR job page
+2. Click "Apply" button on WWR (requires Pro account to see real URL)
+3. Apply on company's actual job page
 
 ---
 
