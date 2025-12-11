@@ -12,11 +12,13 @@ This is acceptable for MVP - job overlap is low and manual review catches dupes.
 """
 
 import defusedxml.ElementTree as ET
+import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
+from bs4 import BeautifulSoup
 
 from app.scraper.base import BaseScraper
 from app.scraper.registry import ScraperRegistry
@@ -61,6 +63,44 @@ class WeWorkRemotelyScraper(BaseScraper):
         """Initialize We Work Remotely scraper."""
         super().__init__(credentials, settings)
         self.base_url = "https://weworkremotely.com"
+
+    def _html_to_text(self, html: str) -> str:
+        """
+        Convert HTML to clean readable text.
+
+        Args:
+            html: HTML string (may be HTML-encoded)
+
+        Returns:
+            Clean text with proper formatting
+        """
+        if not html:
+            return ""
+
+        # Parse HTML with BeautifulSoup
+        soup = BeautifulSoup(html, "lxml")
+
+        # Remove script and style elements
+        for element in soup(["script", "style", "img"]):
+            element.decompose()
+
+        # Get text with newlines for block elements
+        text = soup.get_text(separator="\n")
+
+        # Clean up whitespace
+        lines = []
+        for line in text.splitlines():
+            line = line.strip()
+            if line:
+                lines.append(line)
+
+        # Join with single newlines, collapse multiple blank lines
+        text = "\n".join(lines)
+
+        # Collapse multiple newlines into double newlines (paragraph breaks)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+
+        return text.strip()
 
     async def login(self) -> bool:
         """
@@ -182,9 +222,10 @@ class WeWorkRemotelyScraper(BaseScraper):
             # Get region
             region = region_elem.text.strip() if region_elem is not None and region_elem.text else ""
 
-            # Get description (HTML content)
+            # Get description (HTML content) and convert to clean text
             desc_elem = item.find("description")
-            description = desc_elem.text.strip() if desc_elem is not None and desc_elem.text else ""
+            description_html = desc_elem.text.strip() if desc_elem is not None and desc_elem.text else ""
+            description = self._html_to_text(description_html)
 
             # Get job type
             type_elem = item.find("type")
