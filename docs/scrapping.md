@@ -3,10 +3,10 @@
 ## Architecture Overview
 
 Zapply uses a **registry-based multi-scraper architecture** that supports:
-- Multiple job sources running in sequence
+- Multiple job sources running in **parallel** via `asyncio.gather()`
 - Per-source logging and statistics
 - Database-driven configuration (enable/disable, priority, settings)
-- Cross-source deduplication via `resolved_url`
+- **Two-level deduplication**: same-source (`source_id`) + cross-source (`resolved_url`)
 
 ### Key Components
 
@@ -24,15 +24,30 @@ Zapply uses a **registry-based multi-scraper architecture** that supports:
 ```
 Run triggered (manual/scheduled)
     |
-    +-> Get enabled sources from DB (ordered by priority)
+    +-> PHASE 1: PARALLEL SCRAPING (asyncio.gather)
+    |   |
+    |   +-> Get enabled sources from DB
+    |   |
+    |   +-> For each source IN PARALLEL:
+    |   |       +-> Create SourceRun record
+    |   |       +-> Get credentials from env vars
+    |   |       +-> Instantiate scraper via registry
+    |   |       +-> Execute scrape (browser automation)
+    |   |       +-> Return ScrapeResult with job data (NOT saved yet)
+    |   |
+    |   +-> Wait for all sources to complete
     |
-    +-> For each source:
-    |       +-> Create SourceRun record
-    |       +-> Get credentials from env vars
-    |       +-> Instantiate scraper via registry
-    |       +-> Execute scrape
-    |       +-> Deduplicate (source_id + resolved_url)
-    |       +-> Update SourceRun stats
+    +-> PHASE 2: SEQUENTIAL SAVE (deduplication)
+    |   |
+    |   +-> For each ScrapeResult IN ORDER:
+    |   |       +-> Check same-source dedup (source_id)
+    |   |       +-> Check cross-source dedup (resolved_url)
+    |   |       +-> Save new jobs to database
+    |   |       +-> Update SourceRun stats
+    |
+    +-> PHASE 3: AI MATCHING
+    |   |
+    |   +-> Match new jobs against user profile
     |
     +-> Aggregate stats into parent Run
 ```
@@ -64,6 +79,147 @@ For a source with `credentials_env_prefix = "WORKING_NOMADS"`, the system looks 
 - `WORKING_NOMADS_API_KEY` (optional)
 
 The Admin UI shows which credentials are configured (green) or missing (red).
+
+---
+
+## Parallelization Strategy
+
+### Why Parallel Scraping?
+
+When multiple scrapers are enabled, they run **concurrently** using `asyncio.gather()`:
+
+```python
+scrape_tasks = [scrape_source_parallel(...) for source in sources]
+results = await asyncio.gather(*scrape_tasks, return_exceptions=True)
+```
+
+**Benefits:**
+- **Speed**: 3 sources scraping 30 jobs each takes ~same time as 1 source
+- **Isolation**: One source failing doesn't stop others
+- **Resource efficiency**: Browser automation waits are overlapped
+
+**Implementation Details:**
+- Each parallel task gets its own database session (`async_session_maker()`)
+- Job data is returned in memory, not saved during scrape
+- `ScrapeResult` dataclass holds: source info, job data list, stats, errors
+
+### Why Sequential Saving?
+
+Deduplication **must** happen sequentially to ensure correctness:
+
+```python
+# This runs AFTER all parallel scrapes complete
+for result in scrape_results:
+    for job in result.jobs_data:
+        if job.resolved_url in seen_urls:
+            # Cross-source duplicate!
+            continue
+        save_job(job)
+        seen_urls.add(job.resolved_url)
+```
+
+**Why not parallel?**
+- Race condition: Two sources might try to save the same job simultaneously
+- First-wins semantics: We want deterministic behavior (first source by priority wins)
+- Correctness > Speed: Saving is fast, deduplication logic is critical
+
+---
+
+## Deduplication Strategy
+
+### Two-Level Deduplication
+
+Jobs are deduplicated at two levels:
+
+| Level | Field | Purpose | When |
+|-------|-------|---------|------|
+| **Same-source** | `source_id` | Prevent re-scraping same job from same source | During scrape |
+| **Cross-source** | `resolved_url` | Prevent duplicate jobs across different sources | During save |
+
+### Same-Source Deduplication
+
+Each scraper has a unique ID for jobs within that source:
+- Working Nomads: Job slug from URL (e.g., `senior-python-developer-acme-corp`)
+- Other sources: Job ID, URL hash, or similar unique identifier
+
+```python
+# Before scraping, fetch existing source_ids for this source
+existing_slugs = get_existing_source_ids(source_name)
+
+# During scrape, skip already-seen jobs
+if job_slug in existing_slugs:
+    continue  # Already scraped this job before
+```
+
+**Result:** Each source only scrapes new jobs, even across multiple runs.
+
+### Cross-Source Deduplication
+
+Many job aggregators list the same job. We use `resolved_url` to detect these:
+
+**The Problem:**
+```
+Working Nomads: https://workingnomads.com/j/abc123 → redirects to → https://company.com/careers/job-456
+RemoteOK:       https://remoteok.com/jobs/xyz789 → redirects to → https://company.com/careers/job-456
+```
+
+Both point to the same actual job posting!
+
+**The Solution:**
+1. During scraping, resolve redirect URLs to get the final destination
+2. Store `resolved_url` in the jobs table
+3. During save, check if `resolved_url` already exists
+
+```python
+# Track URLs seen in this batch AND in database
+seen_urls = get_all_resolved_urls_from_db()
+
+for job in jobs_to_save:
+    if job.resolved_url in seen_urls:
+        stats.duplicate += 1
+        continue
+
+    save_job(job)
+    seen_urls.add(job.resolved_url)
+    stats.new += 1
+```
+
+**First Source Wins:** If two sources have the same job, the source with lower priority number (runs first in the save phase) keeps the job.
+
+### How Duplicates Are Marked
+
+Jobs are **not** marked as duplicates in the database - they're simply **not saved**:
+
+| Stat | Meaning |
+|------|---------|
+| `jobs_found` | Total jobs scraped from source |
+| `jobs_new` | Jobs saved to database (passed dedup) |
+| `jobs_duplicate` | Jobs skipped (same-source OR cross-source duplicate) |
+| `jobs_failed` | Jobs that failed to save (error) |
+
+The `duplicate` count is shown in:
+- Run detail modal (per-source breakdown)
+- Source run stats
+- Console logs during scraping
+
+### Database Schema for Deduplication
+
+```sql
+-- jobs table
+CREATE TABLE jobs (
+    id SERIAL PRIMARY KEY,
+    source VARCHAR NOT NULL,           -- e.g., "working_nomads"
+    source_id VARCHAR NOT NULL,        -- unique within source
+    url VARCHAR NOT NULL,              -- original URL from source
+    resolved_url VARCHAR,              -- final URL after redirects
+    -- ... other fields
+
+    UNIQUE(source, source_id)          -- same-source dedup constraint
+);
+
+-- Index for cross-source dedup lookups
+CREATE INDEX ix_jobs_resolved_url ON jobs(resolved_url) WHERE resolved_url IS NOT NULL;
+```
 
 ---
 

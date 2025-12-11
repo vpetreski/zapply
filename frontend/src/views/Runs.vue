@@ -242,7 +242,7 @@ const loading = ref(true)
 const loadingMore = ref(false)
 const selectedRun = ref(null)
 const startingRun = ref(false)
-const autoScrollEnabled = ref(false)
+const autoScrollEnabled = ref(true)
 let autoRefreshInterval = null
 let listRefreshInterval = null
 
@@ -318,7 +318,7 @@ const resetAndFetch = async () => {
 
 const openRunDetail = (run) => {
   selectedRun.value = run
-  autoScrollEnabled.value = false // Reset to unchecked when opening
+  autoScrollEnabled.value = true // Reset to checked when opening
 
   // Start auto-refresh if run is still running
   if (run.status === 'running') {
