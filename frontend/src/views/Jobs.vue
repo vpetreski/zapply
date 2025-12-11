@@ -35,6 +35,16 @@
             <option value="">All</option>
           </select>
         </div>
+
+        <div class="filter-group">
+          <label for="source-filter">Source:</label>
+          <select id="source-filter" v-model="sourceFilter" @change="resetAndFetch" class="filter-select">
+            <option value="">All Sources</option>
+            <option v-for="source in sources" :key="source.name" :value="source.name">
+              {{ source.label }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -206,6 +216,8 @@ const loadingMore = ref(false)
 const statusFilter = ref('matched')
 const matchingSourceFilter = ref('')
 const daysFilter = ref('0')
+const sourceFilter = ref('')
+const sources = ref([])
 const selectedJob = ref(null)
 const updatingJobId = ref(null)
 
@@ -213,6 +225,15 @@ const updatingJobId = ref(null)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+
+const fetchSources = async () => {
+  try {
+    const response = await axios.get('/api/sources')
+    sources.value = response.data
+  } catch (error) {
+    console.error('Failed to fetch sources:', error)
+  }
+}
 
 const hasMore = computed(() => jobs.value.length < total.value)
 
@@ -246,6 +267,10 @@ const fetchJobs = async (append = false) => {
 
     if (daysFilter.value) {
       params.days = parseInt(daysFilter.value)
+    }
+
+    if (sourceFilter.value) {
+      params.source = sourceFilter.value
     }
 
     const response = await axios.get('/api/jobs', { params })
@@ -398,6 +423,7 @@ const formatTimestamp = (timestamp) => {
 }
 
 onMounted(() => {
+  fetchSources()
   fetchJobs()
   window.addEventListener('scroll', handleScroll)
 })

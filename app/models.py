@@ -49,6 +49,7 @@ class Job(Base):
     source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     source_id: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     url: Mapped[str] = mapped_column(String(500), nullable=False)
+    resolved_url: Mapped[Optional[str]] = mapped_column(String(500), index=True)  # For cross-source dedup
 
     # Job details
     title: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -222,3 +223,65 @@ class AppSettings(Base):
 
     def __repr__(self) -> str:
         return f"<AppSettings {self.key}={self.value}>"
+
+
+class ScraperSource(Base):
+    """Scraper source configuration stored in database."""
+
+    __tablename__ = "scraper_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(default=True, index=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    credentials_env_prefix: Mapped[Optional[str]] = mapped_column(String(100))
+    settings: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self) -> str:
+        return f"<ScraperSource {self.name} enabled={self.enabled}>"
+
+
+class SourceRunStatus(str, Enum):
+    """Status of a source run within a pipeline run."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class SourceRun(Base):
+    """Track individual source execution within a run."""
+
+    __tablename__ = "source_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    source_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=SourceRunStatus.RUNNING.value, index=True
+    )
+
+    # Statistics
+    jobs_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    jobs_new: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    jobs_duplicate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    jobs_failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Logs and errors
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    logs: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # Timing
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    duration_seconds: Mapped[Optional[float]] = mapped_column()
+
+    def __repr__(self) -> str:
+        return f"<SourceRun {self.id}: {self.source_name} ({self.status})>"

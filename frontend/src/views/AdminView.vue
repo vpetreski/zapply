@@ -58,6 +58,87 @@
         {{ limitResult.message }}
       </div>
     </section>
+
+    <!-- Scraper Sources -->
+    <section class="admin-section">
+      <div class="section-header">
+        <h2>Scraper Sources</h2>
+        <button @click="syncSources" :disabled="syncingSources" class="btn btn-secondary btn-sm">
+          {{ syncingSources ? 'Syncing...' : 'Sync Sources' }}
+        </button>
+      </div>
+
+      <div v-if="syncResult" class="result-message" :class="syncResult.success ? 'success' : 'error'">
+        {{ syncResult.message }}
+      </div>
+
+      <div v-if="loadingSources" class="loading-message">Loading sources...</div>
+
+      <div v-else-if="sources.length === 0" class="empty-message">
+        No sources configured. Click "Sync Sources" to initialize from registry.
+      </div>
+
+      <div v-else class="sources-list">
+        <div v-for="source in sources" :key="source.id" class="source-card">
+          <div class="source-header">
+            <div class="source-info">
+              <h3>{{ source.label }}</h3>
+              <span class="source-name">{{ source.name }}</span>
+            </div>
+            <label class="toggle-switch">
+              <input
+                type="checkbox"
+                :checked="source.enabled"
+                @change="toggleSource(source)"
+                :disabled="updatingSource === source.name"
+              />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <p v-if="source.description" class="source-description">{{ source.description }}</p>
+
+          <div class="source-details">
+            <div class="detail-item">
+              <span class="detail-label">Priority:</span>
+              <span class="detail-value">{{ source.priority }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Status:</span>
+              <span :class="['badge', source.enabled ? 'badge-enabled' : 'badge-disabled']">
+                {{ source.enabled ? 'Enabled' : 'Disabled' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="credentials-section">
+            <span class="credentials-label">Credentials:</span>
+            <div class="credentials-status">
+              <template v-if="source.credentials_configured && Object.keys(source.credentials_configured).length > 0">
+                <span
+                  v-for="(configured, key) in source.credentials_configured"
+                  :key="key"
+                  :class="['credential-badge', configured ? 'credential-ok' : 'credential-missing']"
+                  :title="configured ? `${key} is configured` : `${key} is missing - set ${source.credentials_env_prefix}_${key.toUpperCase()}`"
+                >
+                  {{ key }}
+                </span>
+              </template>
+              <span v-else class="credential-badge credential-none">No credentials required</span>
+            </div>
+          </div>
+
+          <div v-if="source.settings && Object.keys(source.settings).length > 0" class="settings-section">
+            <span class="settings-label">Settings:</span>
+            <div class="settings-tags">
+              <span v-for="(value, key) in source.settings" :key="key" class="setting-tag">
+                {{ formatSettingKey(key) }}: {{ formatSettingValue(value) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -66,6 +147,21 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import ProfileWarningBanner from '@/components/ProfileWarningBanner.vue'
 
+// Types
+interface ScraperSource {
+  id: number
+  name: string
+  label: string
+  description: string | null
+  enabled: boolean
+  priority: number
+  credentials_env_prefix: string | null
+  settings: Record<string, any> | null
+  credentials_configured: Record<string, boolean> | null
+  created_at: string
+  updated_at: string
+}
+
 const runFrequency = ref<string>('manual')
 const savingFrequency = ref(false)
 const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
@@ -73,6 +169,13 @@ const frequencyResult = ref<{ success: boolean; message: string } | null>(null)
 const scrapeLimit = ref<number>(0)
 const savingLimit = ref(false)
 const limitResult = ref<{ success: boolean; message: string } | null>(null)
+
+// Sources state
+const sources = ref<ScraperSource[]>([])
+const loadingSources = ref(false)
+const syncingSources = ref(false)
+const updatingSource = ref<string | null>(null)
+const syncResult = ref<{ success: boolean; message: string } | null>(null)
 
 async function loadRunFrequency() {
   try {
@@ -145,9 +248,88 @@ async function saveScrapeLimit() {
   }
 }
 
+// Sources functions
+async function loadSources() {
+  loadingSources.value = true
+  try {
+    const response = await axios.get('/api/sources')
+    sources.value = response.data
+  } catch (error) {
+    console.error('Failed to load sources:', error)
+  } finally {
+    loadingSources.value = false
+  }
+}
+
+async function syncSources() {
+  syncingSources.value = true
+  syncResult.value = null
+  try {
+    const response = await axios.post('/api/sources/sync')
+    syncResult.value = {
+      success: true,
+      message: response.data.message
+    }
+    // Reload sources to show any new ones
+    await loadSources()
+    // Clear success message after 5 seconds
+    setTimeout(() => {
+      syncResult.value = null
+    }, 5000)
+  } catch (error: any) {
+    syncResult.value = {
+      success: false,
+      message: error.response?.data?.detail || 'Failed to sync sources'
+    }
+  } finally {
+    syncingSources.value = false
+  }
+}
+
+async function toggleSource(source: ScraperSource) {
+  updatingSource.value = source.name
+  try {
+    const response = await axios.patch(`/api/sources/${source.name}`, {
+      enabled: !source.enabled
+    })
+    // Update the source in the list
+    const index = sources.value.findIndex(s => s.name === source.name)
+    if (index !== -1) {
+      sources.value[index] = response.data
+    }
+  } catch (error: any) {
+    console.error('Failed to update source:', error)
+    // Show error briefly
+    syncResult.value = {
+      success: false,
+      message: error.response?.data?.detail || `Failed to update ${source.label}`
+    }
+    setTimeout(() => {
+      syncResult.value = null
+    }, 3000)
+  } finally {
+    updatingSource.value = null
+  }
+}
+
+function formatSettingKey(key: string): string {
+  return key
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function formatSettingValue(value: any): string {
+  if (Array.isArray(value)) {
+    return value.join(', ')
+  }
+  return String(value)
+}
+
 onMounted(() => {
   loadRunFrequency()
   loadScrapeLimit()
+  loadSources()
 })
 </script>
 
@@ -265,5 +447,252 @@ h1 {
   background: #3a1a1a;
   color: #ff6666;
   border: 1px solid #aa4444;
+}
+
+/* Sources Section */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.section-header h2 {
+  margin: 0;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-secondary {
+  background-color: #404040;
+  color: #e0e0e0;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #505050;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.loading-message,
+.empty-message {
+  color: #888;
+  text-align: center;
+  padding: 2rem;
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.source-card {
+  background: #2a2a2a;
+  border: 1px solid #404040;
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.source-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.source-info h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.1rem;
+  color: #e0e0e0;
+}
+
+.source-name {
+  font-size: 0.8rem;
+  color: #666;
+  font-family: monospace;
+}
+
+.source-description {
+  margin: 0 0 1rem 0;
+  font-size: 0.9rem;
+  color: #999;
+}
+
+.source-details {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1rem;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.detail-label {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.detail-value {
+  font-size: 0.9rem;
+  color: #e0e0e0;
+}
+
+.badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-enabled {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.badge-disabled {
+  background-color: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #404040;
+  border-radius: 13px;
+  transition: 0.3s;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #e0e0e0;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #22c55e;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Credentials Section */
+.credentials-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.credentials-label {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.credentials-status {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.credential-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.credential-ok {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.credential-missing {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.credential-none {
+  background-color: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+}
+
+/* Settings Section */
+.settings-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.settings-label {
+  font-size: 0.8rem;
+  color: #888;
+  padding-top: 0.25rem;
+}
+
+.settings-tags {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.setting-tag {
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(6, 182, 212, 0.15);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #67e8f9;
 }
 </style>
