@@ -20,19 +20,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def constraint_exists(conn, table_name: str, constraint_name: str) -> bool:
     """Check if a constraint exists on a table."""
-    result = conn.execute(sa.text("""
+    # Use string formatting for table name since it can't be parameterized
+    result = conn.execute(sa.text(f"""
         SELECT 1 FROM pg_constraint
-        WHERE conname = :constraint_name
-        AND conrelid = :table_name::regclass
-    """), {"constraint_name": constraint_name, "table_name": table_name})
+        WHERE conname = '{constraint_name}'
+        AND conrelid = '{table_name}'::regclass
+    """))
     return result.fetchone() is not None
 
 
 def index_exists(conn, index_name: str) -> bool:
     """Check if an index exists."""
-    result = conn.execute(sa.text("""
-        SELECT 1 FROM pg_indexes WHERE indexname = :index_name
-    """), {"index_name": index_name})
+    result = conn.execute(sa.text(f"""
+        SELECT 1 FROM pg_indexes WHERE indexname = '{index_name}'
+    """))
     return result.fetchone() is not None
 
 
