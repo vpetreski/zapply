@@ -119,6 +119,17 @@ sleep 10
 echo "🏥 Checking service health..."
 $DOCKER ps | grep zapply
 
+# Show full backend logs after everything started
+echo ""
+echo "📋 Full Backend logs:"
+$DOCKER logs zapply-backend-prod 2>&1 | tail -100
+
+# Test health endpoint
+echo ""
+echo "🔍 Testing health endpoint..."
+curl -s http://localhost:8000/api/health || echo "Health check failed"
+
+echo ""
 echo "✅ Deployment complete!"
 echo ""
 echo "🌐 Access your application at:"
