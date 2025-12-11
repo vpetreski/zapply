@@ -78,12 +78,17 @@ The Admin UI shows which credentials are configured (green) or missing (red).
    class NewSourceScraper(BaseScraper):
        SOURCE_NAME = "new_source"
        SOURCE_LABEL = "New Source"
-       SOURCE_DESCRIPTION = "Description for admin UI"
+       SOURCE_DESCRIPTION = "Description here"
        REQUIRES_LOGIN = True  # or False
+       REQUIRED_CREDENTIALS = ["username", "password"]  # or ["api_key"]
 
-       async def scrape_jobs(self, on_job_scraped=None, limit=None):
-           # Implementation
+       async def scrape(self, since_days=1, progress_callback=None, job_limit=0, existing_slugs=None, **kwargs):
+           # Implementation - return list of job dicts
            pass
+
+       async def login(self):
+           # Login implementation if REQUIRES_LOGIN=True
+           return True
    ```
 
 2. **Add import** to `app/scraper/__init__.py`:
@@ -91,7 +96,7 @@ The Admin UI shows which credentials are configured (green) or missing (red).
    from app.scraper import new_source  # Triggers registration
    ```
 
-3. **Add migration** to seed database record (optional - can also use "Sync Sources" in Admin UI)
+3. **Add migration** to seed database record with default settings
 
 4. **Add env vars** to `.env`:
    ```
@@ -99,7 +104,7 @@ The Admin UI shows which credentials are configured (green) or missing (red).
    NEW_SOURCE_PASSWORD=...
    ```
 
-5. **Enable in Admin UI** and set priority
+5. **Restart app** - sources auto-sync on startup, then **enable in Admin UI**
 
 ---
 
@@ -164,16 +169,14 @@ https://www.workingnomads.com/jobs?category=development&location=anywhere,colomb
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/sources` | GET | List all sources with status |
+| `/api/sources` | GET | List all sources |
 | `/api/sources/{name}` | GET | Get single source |
-| `/api/sources/{name}` | PATCH | Update source (enable, priority, settings) |
-| `/api/sources/sync` | POST | Sync DB with code registry |
-| `/api/sources/registered` | GET | List registered scraper classes |
+| `/api/sources/{name}` | PATCH | Update source (enable/disable) |
 
 ---
 
 ## Frontend Features
 
-- **Jobs page**: Filter by source
+- **Jobs page**: Filter by source, source label shown on each job
 - **Runs page**: Per-source results with stats (found/new/duplicate)
-- **Admin page**: Enable/disable sources, view credentials status, sync registry
+- **Admin page**: Simple toggle to enable/disable sources

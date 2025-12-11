@@ -8,16 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.routers.auth import get_current_user, User
 from app.schemas import (
-    RegisteredScraperResponse,
     ScraperSourceResponse,
     ScraperSourceUpdate,
 )
 from app.services.source_service import (
     check_source_credentials,
     get_all_sources,
-    get_registered_scrapers,
     get_source_by_name,
-    sync_sources_with_registry,
     update_source,
 )
 
@@ -54,38 +51,6 @@ async def list_sources(
         result.append(ScraperSourceResponse(**source_dict))
 
     return result
-
-
-@router.get("/registered", response_model=list[RegisteredScraperResponse])
-async def list_registered_scrapers(
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> list[RegisteredScraperResponse]:
-    """
-    List all registered scraper classes.
-
-    These are scrapers available in the code that can be enabled in the database.
-    """
-    scrapers = get_registered_scrapers()
-    return [RegisteredScraperResponse(**s) for s in scrapers]
-
-
-@router.post("/sync")
-async def sync_sources(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """
-    Sync database sources with registered scrapers.
-
-    Creates database records for any registered scrapers that don't have one.
-    Also reports orphaned database records (scrapers no longer in code).
-    """
-    result = await sync_sources_with_registry(db)
-    return {
-        "added": result["added"],
-        "orphaned": result["orphaned"],
-        "message": f"Added {len(result['added'])} new sources. {len(result['orphaned'])} orphaned sources found."
-    }
 
 
 @router.get("/{name}", response_model=ScraperSourceResponse)
