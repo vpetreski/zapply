@@ -26,7 +26,7 @@ def upgrade() -> None:
             'we_work_remotely',
             'We Work Remotely',
             'Popular remote job board with backend and fullstack programming positions',
-            false,
+            true,
             200,
             'WE_WORK_REMOTELY',
             '{"categories": ["backend", "fullstack"], "posted_days": 7}'
