@@ -143,7 +143,12 @@ class WeWorkRemotelyScraper(BaseScraper):
                     response = await client.get(feed_url)
                     response.raise_for_status()
 
-                    root = ET.fromstring(response.text)
+                    try:
+                        root = ET.fromstring(response.text)
+                    except ET.ParseError as e:
+                        log_to_console(f"  ❌ Invalid XML in {category} feed: {e}")
+                        continue
+
                     channel = root.find("channel")
                     if channel is None:
                         continue
@@ -217,7 +222,8 @@ class WeWorkRemotelyScraper(BaseScraper):
                         "%a, %d %b %Y %H:%M:%S %z"
                     )
                 except ValueError:
-                    pass
+                    # Log but continue - include job with unknown date rather than skip
+                    log_to_console(f"    ⚠️ Could not parse date: {pub_date_elem.text}")
 
             # Get region
             region = region_elem.text.strip() if region_elem is not None and region_elem.text else ""
