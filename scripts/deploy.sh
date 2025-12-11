@@ -98,6 +98,10 @@ $DOCKER run -d \
 echo "⏳ Waiting for Backend to be ready..."
 sleep 20
 
+# Show backend logs for debugging
+echo "📋 Backend logs:"
+$DOCKER logs zapply-backend-prod 2>&1 | tail -50
+
 # Start Frontend
 echo "▶️  Starting Frontend..."
 $DOCKER run -d \
