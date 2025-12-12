@@ -7,5 +7,6 @@ from app.scraper.registry import ScraperRegistry
 # Each scraper uses @ScraperRegistry.register() decorator
 from app.scraper.working_nomads import WorkingNomadsScraper
 from app.scraper.weworkremotely import WeWorkRemotelyScraper
+from app.scraper.remotive import RemotiveScraper
 
-__all__ = ["BaseScraper", "ScraperRegistry", "WorkingNomadsScraper", "WeWorkRemotelyScraper"]
+__all__ = ["BaseScraper", "ScraperRegistry", "WorkingNomadsScraper", "WeWorkRemotelyScraper", "RemotiveScraper"]

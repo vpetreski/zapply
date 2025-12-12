@@ -392,6 +392,70 @@ The URL stored is the WWR job page. To apply:
 
 ---
 
+### Remotive
+
+| Property | Value |
+|----------|-------|
+| **Name** | `remotive` |
+| **File** | `app/scraper/remotive.py` |
+| **Type** | Premium (login required) |
+| **Auth** | Email/password |
+
+**Environment Variables:**
+```
+REMOTIVE_USERNAME=your_email@example.com
+REMOTIVE_PASSWORD=your_password
+```
+
+**How it works:**
+1. Launches headless Chromium via Playwright
+2. Logs in at `https://remotive.com/web/login`
+3. Navigates to Software Development category with location filters
+4. Clicks "More Jobs" button until jobs older than 2 weeks appear
+5. Extracts job slugs from the listing page
+6. Visits each job detail page to scrape: title, company, description, location, apply URL
+7. Resolves apply URLs to get actual job page (for deduplication)
+
+**Default Settings** (stored in `scraper_sources.settings`):
+```json
+{
+  "locations": ["Worldwide", "Latin America (LATAM)", "Colombia"],
+  "posted_days": 7
+}
+```
+
+**Title Format:**
+
+Remotive uses a specific title format: `[Hiring] Job Title @CompanyName`
+- The `[Hiring]` prefix is removed
+- Company name is extracted from after the `@` symbol
+
+**Location Filter Options:**
+
+| Location | URL Parameter |
+|----------|---------------|
+| Worldwide | `Worldwide` |
+| Latin America | `Latin America (LATAM)` |
+| Colombia | `Colombia` |
+| North America | `North America` |
+| Europe | `Europe` |
+
+**URL Pattern:**
+```
+https://remotive.com/remote-jobs/software-development?location=Worldwide,Latin+America+%28LATAM%29,Colombia
+```
+
+**Deduplication:**
+- Within source: `source_id` (job slug with numeric ID, e.g., `senior-developer-123456`) ✅
+- Cross-source: `resolved_url` (actual job posting URL from Apply button) ✅
+
+**Rate Limiting:**
+- 1-2 second delays between job detail page loads
+- Respects `networkidle` state before scraping
+- Batch delay every 10 jobs
+
+---
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
