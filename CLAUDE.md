@@ -175,9 +175,26 @@ Design tables to track:
 
 ### NAS Deployment
 - **SSH username**: `vpetreski` (not cocoloco)
-- **Host**: `192.168.50.50` or `nas.local`
-- **Deploy script**: `scripts/deploy.sh`
-- **Env file on NAS**: `/volume1/docker/zapply/.env.production`
+- **Host**: `nas.local` (use `-o StrictHostKeyChecking=accept-new` first time)
+- **Sudo password**: `vanja2512`
+- **Deploy dir**: `/volume1/docker/zapply`
+- **Env file**: `/volume1/docker/zapply/.env.production`
+- **Deploy script**: `scripts/deploy.sh` (needs to run ON NAS with sudo)
+
+**Common NAS commands:**
+```bash
+# SSH to NAS
+ssh vpetreski@nas.local
+
+# Run docker commands (need sudo)
+ssh vpetreski@nas.local "echo 'vanja2512' | sudo -S /usr/local/bin/docker ps"
+
+# Check backend logs
+ssh vpetreski@nas.local "echo 'vanja2512' | sudo -S /usr/local/bin/docker logs zapply-backend-prod --tail 50"
+
+# Run psql on NAS
+ssh vpetreski@nas.local "echo 'vanja2512' | sudo -S /usr/local/bin/docker exec zapply-postgres-prod psql -U zapply -d zapply -c 'SELECT 1;'"
+```
 
 ## MVP Scope
 
