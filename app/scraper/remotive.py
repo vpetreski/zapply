@@ -58,6 +58,10 @@ class RemotiveScraper(BaseScraper):
         if not self.page:
             return False
 
+        if not self.username or not self.password:
+            log_to_console("❌ Missing Remotive credentials (REMOTIVE_USERNAME/PASSWORD)")
+            return False
+
         try:
             log_to_console(f"🔐 Logging in to Remotive as {self.username}...")
 
@@ -240,9 +244,9 @@ class RemotiveScraper(BaseScraper):
             title = raw_title
             company = "Unknown"
 
-            # Remove "[Hiring]" prefix if present
+            # Remove "[Hiring]" prefix if present (only from start, not all occurrences)
             if title.startswith('[Hiring]'):
-                title = title.replace('[Hiring]', '').strip()
+                title = title[len('[Hiring]'):].strip()
 
             # Extract company from "@CompanyName" suffix
             if '@' in title:
