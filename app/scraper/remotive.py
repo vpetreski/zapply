@@ -4,6 +4,7 @@ Uses Playwright for browser automation to scrape job listings.
 Requires premium login for access to all jobs.
 """
 
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -124,28 +125,48 @@ class RemotiveScraper(BaseScraper):
         ]
 
         click_count = 0
+        last_job_count = 0
+        seen_new_section = False
+
         while click_count < 100:  # Safety limit
             try:
-                # Check for old job markers (2wks ago, etc.)
-                page_text = await self.page.content()
+                # Count current jobs using x-data attribute (Alpine.js job cards)
+                job_elements = await self.page.query_selector_all('li[x-data*="joburl"]')
+                current_job_count = len(job_elements)
 
-                # Stop if we see jobs that are 2+ weeks old
-                if "2wks ago" in page_text or "3wks ago" in page_text or "1mo ago" in page_text:
-                    log_to_console(f"   Found jobs older than {max_age_days} days, stopping load")
+                log_to_console(f"   Current job count: {current_job_count}")
+
+                # If we have enough jobs and clicking didn't add more, stop
+                if click_count > 0 and current_job_count == last_job_count:
+                    log_to_console(f"   No new jobs loaded after click, stopping")
                     break
 
-                # Count current jobs
-                job_cards = await self.page.query_selector_all('[data-testid="job-list-item"], .job-card, article[class*="job"]')
-                if not job_cards:
-                    # Try alternate selector
-                    job_cards = await self.page.query_selector_all('a[href*="/remote-jobs/"][href*="-"]')
+                last_job_count = current_job_count
 
-                job_count = len(job_cards)
-
-                # Check if we've reached the limit
-                if job_limit > 0 and job_count >= job_limit:
+                # Check if we've reached job limit
+                if job_limit > 0 and current_job_count >= job_limit:
                     log_to_console(f"   Reached job limit of {job_limit}")
                     break
+
+                # Check job items for date markers
+                # First, we need to see "New" jobs (after featured section)
+                # Then stop when we see 2wks ago AFTER the New section
+                if current_job_count > 5:
+                    for item in job_elements:
+                        item_text = await item.inner_text()
+                        # Check if we've seen the "New" section
+                        if "New" in item_text:
+                            seen_new_section = True
+
+                    # Only stop for old dates AFTER we've seen New jobs
+                    if seen_new_section:
+                        # Check the last few items for old dates
+                        for item in job_elements[-5:]:
+                            item_text = await item.inner_text()
+                            if "2wks ago" in item_text or "3wks ago" in item_text or "1mo ago" in item_text:
+                                log_to_console(f"   Found old jobs after New section, stopping load")
+                                click_count = 999
+                                break
 
                 # Find and click "More Jobs" button
                 found_button = None
@@ -187,31 +208,37 @@ class RemotiveScraper(BaseScraper):
 
         log_to_console("📋 Extracting job slugs...")
 
-        # Find job links in the software-development category (not nav links)
-        # Format: /remote-jobs/software-development/job-slug-123456
-        job_links = await self.page.query_selector_all('a[href*="/remote-jobs/software-development/"]')
+        # Find job URLs from x-data attributes (Alpine.js components)
+        # Jobs are stored as: x-data="{...jobData(), id: 123, joburl: 'https://...'}"
+        # URLs can be either /remote-jobs/... or /remote/jobs/...
+        job_elements = await self.page.query_selector_all('li[x-data*="joburl"]')
 
         slugs = []
         seen_slugs = set()
+        job_urls = []
 
-        for link in job_links:
-            href = await link.get_attribute('href')
-            if not href:
+        for elem in job_elements:
+            # Extract joburl from x-data attribute
+            x_data = await elem.get_attribute('x-data')
+            if not x_data:
                 continue
 
-            # Extract slug from URL
-            # URLs look like: /remote-jobs/software-development/senior-python-developer-123456
-            parts = href.rstrip('/').split('/')
-
-            # Get the last part as the slug (job-title-with-id)
-            if len(parts) >= 4:  # /remote-jobs/software-development/slug
-                slug = parts[-1]
-                # Skip if already seen
+            # Parse joburl from the x-data string
+            # Format: {...jobData(), id: 123, joburl: 'https://...'}
+            match = re.search(r"joburl:\s*'([^']+)'", x_data)
+            if match:
+                job_url = match.group(1)
+                # Extract slug from URL (last part)
+                slug = job_url.rstrip('/').split('/')[-1]
                 if slug and slug not in seen_slugs:
                     # Job slugs end with a numeric ID
                     if any(c.isdigit() for c in slug.split('-')[-1]):
                         slugs.append(slug)
                         seen_slugs.add(slug)
+                        job_urls.append(job_url)
+
+        # Store job URLs for later use in scraping
+        self._job_urls = {slug: url for slug, url in zip(slugs, job_urls)}
 
         log_to_console(f"✅ Found {len(slugs)} unique job slugs")
         return slugs
@@ -230,8 +257,13 @@ class RemotiveScraper(BaseScraper):
             return None
 
         try:
-            # Navigate to job detail page - need full path with category
-            job_url = f"{self.base_url}/remote-jobs/software-development/{slug}"
+            # Get the job URL from stored mapping or construct it
+            if hasattr(self, '_job_urls') and slug in self._job_urls:
+                job_url = self._job_urls[slug]
+            else:
+                # Fallback: try both URL patterns
+                job_url = f"{self.base_url}/remote-jobs/software-development/{slug}"
+
             await self.page.goto(job_url, wait_until="networkidle")
             await self.page.wait_for_timeout(1000)
 

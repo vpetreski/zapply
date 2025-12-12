@@ -227,6 +227,11 @@ ssh vpetreski@nas.local "echo 'vanja2512' | sudo -S /usr/local/bin/docker exec z
 - Integration tests for components
 - E2E tests for application flow
 
+## Important Notes from User
+
+- **Trust the user**: If the user says there are more jobs on a page than the scraper finds, the scraper has a bug. Don't argue - fix it.
+- **Remotive page structure**: Featured/sponsored jobs appear first (may show old dates like 4wks ago). Then "New" jobs appear, then jobs with dates (1d ago, 3d ago, 1wk ago). Keep loading "More Jobs" until you see 2wks ago AFTER the New/recent jobs section.
+
 ## Common Pitfalls to Avoid
 
 1. **Over-engineering**: Don't build for scale until needed
