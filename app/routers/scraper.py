@@ -1,6 +1,7 @@
 """Scraper endpoints for manual triggering."""
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -11,9 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_maker, get_db
-from app.models import Run, RunStatus, UserProfile
+from app.models import Run, RunPhase, RunStatus, RunTriggerType, UserProfile
 from app.routers.auth import User, get_current_user
-from app.services.scraper_service import scrape_and_save_jobs
+from app.services.scraper_service import scrape_and_save_jobs_with_run
 from app.utils import log_to_console
 
 limiter = Limiter(key_func=get_remote_address)
@@ -28,12 +29,12 @@ class StartRunResponse(BaseModel):
     run_id: int
 
 
-async def run_scraper_background():
-    """Run the scraper in the background."""
+async def run_scraper_background(run_id: int):
+    """Run the scraper in the background with a pre-created run."""
     async with async_session_maker() as db:
         try:
-            log_to_console("🚀 Starting background scraper task...")
-            await scrape_and_save_jobs(db)
+            log_to_console(f"🚀 Starting background scraper task for run #{run_id}...")
+            await scrape_and_save_jobs_with_run(db, run_id)
             log_to_console("✅ Background scraper task completed successfully")
         except Exception as e:
             log_to_console(f"❌ Background scraper error: {e}")
@@ -49,21 +50,14 @@ async def run_scraper(
     db: AsyncSession = Depends(get_db)
 ) -> StartRunResponse:
     """
-    Manually trigger job scraping from Working Nomads.
+    Manually trigger job scraping from all enabled sources.
 
     This will:
     1. Check if user profile exists (REQUIRED)
     2. Check if there's already a running run
-    3. Start the scraping process in the background
-    4. Return immediately with the run ID
-
-    The scraping process will:
-    - Login to Working Nomads
-    - Apply filters (Development + Anywhere,Colombia)
-    - Load all jobs
-    - Scrape each job's details
-    - Save new jobs to database (skip existing ones)
-    - Match jobs against user profile
+    3. Create the run record immediately
+    4. Start the scraping process in the background
+    5. Return immediately with the run ID
 
     Returns the run ID for tracking.
     """
@@ -99,24 +93,28 @@ async def run_scraper(
         )
     log_to_console("✅ No active runs - proceeding")
 
-    # Start the scraper in the background
-    log_to_console("🚀 Starting background scraper task...")
-    asyncio.create_task(run_scraper_background())
-
-    # Wait a moment for the run to be created
-    await asyncio.sleep(0.5)
-
-    # Get the newly created run
-    result = await db.execute(
-        select(Run).order_by(Run.id.desc()).limit(1)
+    # Create run record FIRST (before background task)
+    new_run = Run(
+        status=RunStatus.RUNNING.value,
+        phase=RunPhase.SCRAPING.value,
+        trigger_type=RunTriggerType.MANUAL.value,
+        logs=[{
+            "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "level": "info",
+            "message": "Run created, starting scraper..."
+        }],
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
-    new_run = result.scalar_one_or_none()
-
-    if not new_run:
-        log_to_console("❌ Failed to create run record")
-        raise HTTPException(status_code=500, detail="Failed to create run")
+    db.add(new_run)
+    await db.commit()
+    await db.refresh(new_run)
 
     log_to_console(f"✅ Run #{new_run.id} created successfully")
+
+    # Start the scraper in the background with the run ID
+    log_to_console("🚀 Starting background scraper task...")
+    asyncio.create_task(run_scraper_background(new_run.id))
+
     log_to_console("="*60 + "\n")
 
     return StartRunResponse(

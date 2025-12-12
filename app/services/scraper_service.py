@@ -421,6 +421,35 @@ async def save_jobs_and_finalize_source_runs(
     }
 
 
+async def scrape_and_save_jobs_with_run(
+    db: AsyncSession,
+    run_id: int,
+    source_names: list[str] | None = None
+) -> dict[str, int]:
+    """
+    Execute scraping with a pre-created run record.
+
+    This is called from the API when a run has already been created.
+    The run_id is guaranteed to exist and be in RUNNING status.
+
+    Args:
+        db: Database session
+        run_id: ID of the pre-created run record
+        source_names: Optional list of specific sources to run (None = all enabled)
+
+    Returns:
+        Dictionary with aggregate statistics
+    """
+    # Get the existing run
+    result = await db.execute(select(Run).where(Run.id == run_id))
+    run = result.scalar_one_or_none()
+
+    if not run:
+        raise ValueError(f"Run #{run_id} not found")
+
+    return await _execute_scraping(db, run, source_names)
+
+
 async def scrape_and_save_jobs(
     db: AsyncSession,
     trigger_type: str = RunTriggerType.MANUAL.value,
@@ -428,6 +457,9 @@ async def scrape_and_save_jobs(
 ) -> dict[str, int]:
     """
     Scrape jobs from all enabled sources (or specific sources) and save to database.
+
+    This is called from the scheduler when no run exists yet.
+    Creates a new run record internally.
 
     Scraping runs in PARALLEL for speed.
     Deduplication and saving runs SEQUENTIALLY for correctness.
@@ -456,9 +488,6 @@ async def scrape_and_save_jobs(
 
     log_to_console("🔒 Acquired scraper lock")
 
-    run = None
-    stats = {"total": 0, "new": 0, "existing": 0, "failed": 0, "sources_run": 0, "sources_failed": 0}
-
     try:
         # STEP 3: Double-check for running runs (belt AND suspenders)
         running_result = await db.execute(
@@ -471,6 +500,49 @@ async def scrape_and_save_jobs(
                 "Please wait for it to complete before starting a new run."
             )
 
+        # Create run record
+        run = Run(
+            status=RunStatus.RUNNING.value,
+            phase=RunPhase.SCRAPING.value,
+            trigger_type=trigger_type,
+            logs=[],
+            started_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+
+        log_to_console(f"📋 Created run #{run.id}")
+
+        return await _execute_scraping(db, run, source_names)
+
+    finally:
+        # ALWAYS release the lock, even on error
+        try:
+            await release_scraper_lock(db)
+        except Exception as unlock_error:
+            log_to_console(f"⚠️ Warning: Failed to release scraper lock: {unlock_error}")
+
+
+async def _execute_scraping(
+    db: AsyncSession,
+    run: Run,
+    source_names: list[str] | None = None
+) -> dict[str, int]:
+    """
+    Internal function that executes the actual scraping logic.
+
+    Args:
+        db: Database session
+        run: The Run record to use (already created and committed)
+        source_names: Optional list of specific sources to run (None = all enabled)
+
+    Returns:
+        Dictionary with aggregate statistics
+    """
+    stats = {"total": 0, "new": 0, "existing": 0, "failed": 0, "sources_run": 0, "sources_failed": 0}
+
+    try:
         # Check if user profile exists - REQUIRED for matching
         result = await db.execute(select(UserProfile).limit(1))
         profile = result.scalar_one_or_none()
@@ -500,20 +572,6 @@ async def scrape_and_save_jobs(
 
         source_labels = [s.label for s in sources]
         log_to_console(f"\n🎯 Running scrapers in parallel: {', '.join(source_labels)}")
-
-        # Create run record
-        run = Run(
-            status=RunStatus.RUNNING.value,
-            phase=RunPhase.SCRAPING.value,
-            trigger_type=trigger_type,
-            logs=[],
-            started_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        )
-        db.add(run)
-        await db.commit()
-        await db.refresh(run)
-
-        log_to_console(f"📋 Created run #{run.id}")
 
         add_log(run, f"Starting parallel scraping from {len(sources)} source(s): {', '.join(source_labels)}", "info")
         await db.commit()
@@ -629,22 +687,14 @@ async def scrape_and_save_jobs(
         await db.commit()
 
     except Exception as e:
-        # Handle errors - only update run if it was created
-        if run is not None:
-            run.status = RunStatus.FAILED.value
-            run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
-            run.error_message = str(e)
-            add_log(run, f"Scraping failed: {str(e)}", "error")
-            await db.commit()
+        # Handle errors
+        run.status = RunStatus.FAILED.value
+        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        run.duration_seconds = (run.completed_at - run.started_at).total_seconds()
+        run.error_message = str(e)
+        add_log(run, f"Scraping failed: {str(e)}", "error")
+        await db.commit()
         log_to_console(f"\n❌ Error: {str(e)}")
         raise
-
-    finally:
-        # ALWAYS release the lock, even on error
-        try:
-            await release_scraper_lock(db)
-        except Exception as unlock_error:
-            log_to_console(f"⚠️ Warning: Failed to release scraper lock: {unlock_error}")
 
     return stats
