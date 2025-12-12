@@ -173,6 +173,12 @@ Design tables to track:
 - Optimized for Synology NAS deployment
 - Health checks for all services
 
+### NAS Deployment
+- **SSH username**: `vpetreski` (not cocoloco)
+- **Host**: `192.168.50.50` or `nas.local`
+- **Deploy script**: `scripts/deploy.sh`
+- **Env file on NAS**: `/volume1/docker/zapply/.env.production`
+
 ## MVP Scope
 
 **Week 1 Focus:**
