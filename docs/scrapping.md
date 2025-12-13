@@ -445,6 +445,22 @@ Remotive uses a specific title format: `[Hiring] Job Title @CompanyName`
 https://remotive.com/remote-jobs/software-development?location=Worldwide,Latin+America+%28LATAM%29,Colombia
 ```
 
+**Date Filtering Logic:**
+
+Remotive doesn't have a date filter API parameter. Instead, the scraper filters jobs client-side based on the relative date text displayed on each job card:
+
+1. **Page structure:** Featured/sponsored jobs appear first (may show old dates like "4wks ago"), then "New" jobs, then regular jobs with dates (1d ago, 3d ago, 1wk ago, 2wks ago, etc.)
+
+2. **Filtering approach:**
+   - Featured jobs at the top are always kept (even if they show old dates)
+   - Once the scraper sees a "New" label, it starts filtering
+   - After the "New" section, any job showing "2wks ago" or older is skipped
+   - Jobs showing "New", "1d ago", "3d ago", "1wk ago" are kept
+
+3. **Date markers skipped:** `2wks ago`, `3wks ago`, `4wks ago`, `1mo ago`, `2mo ago`
+
+4. **Result:** Returns only jobs from approximately the last 7 days (~148 jobs typically)
+
 **Deduplication:**
 - Within source: `source_id` (job slug with numeric ID, e.g., `senior-developer-123456`) ✅
 - Cross-source: `resolved_url` (actual job posting URL from Apply button) ✅
