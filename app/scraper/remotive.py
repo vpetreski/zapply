@@ -491,13 +491,15 @@ class RemotiveScraper(BaseScraper):
             scraped_count = 0
             for i, slug in enumerate(all_slugs, 1):
                 if slug in existing_slugs:
-                    log_to_console(f"  [{i}/{len(all_slugs)}] ⏭️  SKIP: {slug} (already exists)")
+                    log_to_console(f"  [{i}/{len(all_slugs)}] ⏭️  SKIP: {slug} (already in database)")
+                    if progress_callback:
+                        await progress_callback(f"Skipping job {i}/{len(all_slugs)}: {slug} (already in database)", "info")
                     continue
 
                 scraped_count += 1
-                log_to_console(f"  [{i}/{len(all_slugs)}] 📝 SCRAPING: {slug}")
+                log_to_console(f"  [{i}/{len(all_slugs)}] 📝 SCRAPING: {slug} (new)")
                 if progress_callback:
-                    await progress_callback(f"Scraping job {i}/{len(all_slugs)}: {slug}", "info")
+                    await progress_callback(f"Scraping job {i}/{len(all_slugs)}: {slug} (new)", "info")
 
                 job_data = await self._scrape_job_details(slug)
                 if job_data:

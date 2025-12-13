@@ -316,9 +316,17 @@ const resetAndFetch = async () => {
   await fetchRuns()
 }
 
-const openRunDetail = (run) => {
+const openRunDetail = async (run) => {
   selectedRun.value = run
   autoScrollEnabled.value = true // Reset to checked when opening
+
+  // Always fetch fresh data to ensure logs are complete
+  try {
+    const response = await axios.get(`/api/runs/${run.id}`)
+    selectedRun.value = { ...response.data }
+  } catch (error) {
+    console.error('Failed to fetch run details:', error)
+  }
 
   // Start auto-refresh if run is still running
   if (run.status === 'running') {

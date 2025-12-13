@@ -248,6 +248,12 @@ async def scrape_source_parallel(
             result.jobs_found = len(jobs_data)
             source_run.jobs_found = len(jobs_data)
 
+            # Mark as completed immediately after scraping
+            # Stats (jobs_new, jobs_duplicate) will be updated in save phase
+            source_run.status = SourceRunStatus.COMPLETED.value
+            source_run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            source_run.duration_seconds = (source_run.completed_at - source_run.started_at).total_seconds()
+
             add_source_log(source_run, f"Scraping complete: {len(jobs_data)} jobs found", "success")
             if run:
                 add_log(run, f"[{source_label}] Scraping complete: {len(jobs_data)} jobs found", "success")
@@ -386,22 +392,19 @@ async def save_jobs_and_finalize_source_runs(
 
         await db.commit()
 
-        # Update source run stats
+        # Update source run stats (status already set to completed in scrape phase)
         source_run.jobs_new = jobs_new
         source_run.jobs_duplicate = jobs_duplicate
         source_run.jobs_failed = jobs_failed
-        source_run.status = SourceRunStatus.COMPLETED.value
-        source_run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        source_run.duration_seconds = (source_run.completed_at - source_run.started_at).total_seconds()
 
         add_source_log(
             source_run,
-            f"Completed: {jobs_new} new, {jobs_duplicate} duplicates, {jobs_failed} failed",
+            f"Saved: {jobs_new} new, {jobs_duplicate} duplicates, {jobs_failed} failed",
             "success"
         )
         add_log(
             run,
-            f"[{result.source_label}] Completed: {jobs_new} new, {jobs_duplicate} duplicates, {jobs_failed} failed",
+            f"[{result.source_label}] Saved: {jobs_new} new, {jobs_duplicate} duplicates, {jobs_failed} failed",
             "success"
         )
         await db.commit()

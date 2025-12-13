@@ -325,6 +325,8 @@ class WeWorkRemotelyScraper(BaseScraper):
 
             if not new_jobs:
                 log_to_console("✅ All jobs already in database, nothing new to scrape")
+                if progress_callback:
+                    await progress_callback("All jobs already in database, nothing new to scrape", "success")
                 return jobs
 
             # Apply job limit
@@ -333,14 +335,17 @@ class WeWorkRemotelyScraper(BaseScraper):
                 log_to_console(f"  📉 Limited to {job_limit} jobs")
 
             # Step 3: Normalize jobs from RSS data
-            log_to_console(f"\n📝 Processing {len(new_jobs)} jobs...")
+            log_to_console(f"\n📝 Processing {len(new_jobs)} new jobs...")
+            if progress_callback:
+                await progress_callback(f"Processing {len(new_jobs)} new jobs...", "info")
 
             for i, job_data in enumerate(new_jobs, 1):
                 slug = job_data.get("slug", "unknown")
                 job_url = job_data.get("url", f"{self.base_url}/remote-jobs/{slug}")
 
-                if progress_callback and i % 10 == 0:
-                    await progress_callback(f"Processing job {i}/{len(new_jobs)}", "info")
+                log_to_console(f"  [{i}/{len(new_jobs)}] 📝 PROCESSING: {slug} (new)")
+                if progress_callback:
+                    await progress_callback(f"Processing job {i}/{len(new_jobs)}: {slug} (new)", "info")
 
                 # Normalize the job from RSS data
                 # NOTE: resolved_url is None - WWR jobs cannot participate in
