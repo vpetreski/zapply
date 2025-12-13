@@ -416,11 +416,13 @@ class WorkingNomadsScraper(BaseScraper):
                 # Check if this job already exists
                 if slug in existing_slugs:
                     log_to_console(f"  [{i}/{len(all_slugs)}] ⏭️  SKIP: {slug} (already in database)")
+                    if progress_callback:
+                        await progress_callback(f"Skipping job {i}/{len(all_slugs)}: {slug} (already in database)", "info")
                     continue
 
                 # Scrape new job
                 scraped_count += 1
-                log_to_console(f"  [{i}/{len(all_slugs)}] 📝 SCRAPING: {slug}")
+                log_to_console(f"  [{i}/{len(all_slugs)}] 📝 SCRAPING: {slug} (new)")
                 if progress_callback:
                     await progress_callback(f"Scraping job {i}/{len(all_slugs)}: {slug} (new)", "info")
 
