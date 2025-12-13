@@ -216,8 +216,25 @@ class RemotiveScraper(BaseScraper):
         slugs = []
         seen_slugs = set()
         job_urls = []
+        seen_new_section = False
+        old_date_markers = ["2wks ago", "3wks ago", "4wks ago", "1mo ago", "2mo ago"]
 
         for elem in job_elements:
+            # Get element text to check date
+            elem_text = await elem.inner_text()
+
+            # Track when we've seen the "New" section (after featured jobs)
+            if "New" in elem_text:
+                seen_new_section = True
+
+            # Skip old jobs (only after we've seen the New section)
+            # Featured jobs at the top may show old dates but we still want them
+            if seen_new_section:
+                is_old = any(marker in elem_text for marker in old_date_markers)
+                if is_old:
+                    log_to_console(f"   Skipping old job (after New section)")
+                    continue
+
             # Extract joburl from x-data attribute
             x_data = await elem.get_attribute('x-data')
             if not x_data:
