@@ -50,17 +50,17 @@ class Job(Base):
 
     # Source information
     source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    source_id: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
-    url: Mapped[str] = mapped_column(String(1000), nullable=False)
-    resolved_url: Mapped[Optional[str]] = mapped_column(String(1000), index=True)  # For cross-source dedup
+    source_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved_url: Mapped[Optional[str]] = mapped_column(Text, index=True)  # For cross-source dedup
 
     # Job details
-    title: Mapped[str] = mapped_column(String(500), nullable=False)
-    company: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    company: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     requirements: Mapped[Optional[str]] = mapped_column(Text)
-    location: Mapped[Optional[str]] = mapped_column(String(500))
-    salary: Mapped[Optional[str]] = mapped_column(String(500))
+    location: Mapped[Optional[str]] = mapped_column(Text)
+    salary: Mapped[Optional[str]] = mapped_column(Text)
     tags: Mapped[Optional[list]] = mapped_column(JSON)
 
     # Raw data from source
