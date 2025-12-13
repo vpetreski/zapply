@@ -75,7 +75,7 @@
               >
                 {{ formatSourceName(sourceRun.source_name) }}
                 <span v-if="sourceRun.status === 'completed'" class="source-count">{{ sourceRun.jobs_new }}</span>
-                <span v-else-if="sourceRun.status === 'running'" class="source-spinner"></span>
+                <span v-else-if="sourceRun.status === 'running' && run.status !== 'failed'" class="source-spinner"></span>
               </span>
             </div>
           </div>
