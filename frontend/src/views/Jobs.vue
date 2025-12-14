@@ -91,20 +91,20 @@
                 {{ updatingJobId === job.id ? '...' : 'Mark Matched' }}
               </button>
               <button
-                v-if="job.status === 'matched' && !job.applied_at"
-                @click.stop="markAsRejected(job)"
-                class="btn btn-danger btn-sm"
-                :disabled="updatingJobId === job.id"
-              >
-                {{ updatingJobId === job.id ? '...' : 'Mark Rejected' }}
-              </button>
-              <button
                 v-if="!job.applied_at"
                 @click.stop="markAsApplied(job)"
                 class="btn btn-purple btn-sm"
                 :disabled="updatingJobId === job.id"
               >
                 {{ updatingJobId === job.id ? '...' : 'Mark Applied' }}
+              </button>
+              <button
+                v-if="job.status === 'matched' && !job.applied_at"
+                @click.stop="markAsRejected(job)"
+                class="btn btn-danger btn-sm"
+                :disabled="updatingJobId === job.id"
+              >
+                {{ updatingJobId === job.id ? '...' : 'Mark Rejected' }}
               </button>
                           </div>
           </div>
