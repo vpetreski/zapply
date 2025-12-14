@@ -59,7 +59,7 @@
         <div v-for="job in jobs" :key="job.id" class="card job-card">
           <div class="job-header">
             <div class="job-header-left">
-              <h3 class="job-title" @click="openJobDetail(job)">{{ job.title }}</h3>
+              <a :href="job.url" target="_blank" class="job-title">{{ job.title }}</a>
               <p class="company">{{ job.company }}</p>
             </div>
             <div class="job-header-right">
@@ -74,7 +74,7 @@
               <span v-if="job.applied_at" class="badge badge-applied">applied</span>
             </div>
           </div>
-          <p class="job-description">{{ truncate(job.description, 200) }}</p>
+          <p class="job-description" @click="openJobDetail(job)">{{ truncate(job.description, 200) }}</p>
           <div class="job-footer">
             <div class="job-footer-left">
               <span v-if="job.location" class="text-muted">📍 {{ job.location }}</span>
@@ -106,8 +106,7 @@
               >
                 {{ updatingJobId === job.id ? '...' : 'Mark Applied' }}
               </button>
-              <a :href="job.url" target="_blank" class="btn btn-primary btn-sm">View Job</a>
-            </div>
+                          </div>
           </div>
         </div>
       </div>
@@ -535,14 +534,13 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.job-header h3 {
+.job-title {
   font-size: 1.25rem;
   margin-bottom: 0.25rem;
-}
-
-.job-title {
-  cursor: pointer;
+  color: var(--text);
+  text-decoration: none;
   transition: color 0.2s;
+  display: block;
 }
 
 .job-title:hover {
@@ -595,6 +593,11 @@ onUnmounted(() => {
   color: var(--text-muted);
   line-height: 1.6;
   margin-bottom: 1rem;
+  cursor: pointer;
+}
+
+.job-description:hover {
+  color: var(--text);
 }
 
 .job-footer {
