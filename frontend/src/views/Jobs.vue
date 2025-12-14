@@ -302,6 +302,10 @@ const updateJobInList = (job, response, shouldRemove) => {
       if (selectedJob.value && selectedJob.value.id === job.id) {
         selectedJob.value = null
       }
+      // Load more jobs if available to replace the removed one
+      if (hasMore.value && !loadingMore.value) {
+        loadMore()
+      }
     } else {
       jobs.value[index] = response.data
       // Update modal if this job is being viewed
