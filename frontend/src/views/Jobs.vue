@@ -51,7 +51,7 @@
     <div v-if="loading" class="loading">Loading jobs...</div>
 
     <div v-else-if="jobs.length === 0" class="empty">
-      <p>No jobs found. The scraper will fetch jobs hourly.</p>
+      <p>No jobs found.</p>
     </div>
 
     <div v-else>
