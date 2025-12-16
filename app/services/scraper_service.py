@@ -130,29 +130,43 @@ async def acquire_scraper_lock(db: AsyncSession) -> bool:
         True if lock acquired, False if another scraper is running
     """
     result = await db.execute(
-        text(f"SELECT pg_try_advisory_lock({SCRAPER_LOCK_ID})")
+        text("SELECT pg_try_advisory_lock(:lock_id)"),
+        {"lock_id": SCRAPER_LOCK_ID}
     )
     if result.scalar():
         return True
 
     # Lock not acquired - check if it's stale
     # A stale lock means the advisory lock is held but no run is actually running
+    # NOTE: Small race condition window - another run could start between this
+    # check and pg_terminate_backend. Acceptable given low frequency (hourly/daily).
     running_run = await db.execute(
         text("SELECT id FROM runs WHERE status = 'running' LIMIT 1")
     )
     if running_run.scalar() is None:
         # No running pipeline but lock is held = stale lock
         log_to_console("⚠️ Detected stale scraper lock - clearing it")
+
         # Kill the session holding the stale lock
-        await db.execute(text(f"""
+        terminate_result = await db.execute(text("""
             SELECT pg_terminate_backend(pid)
             FROM pg_locks
-            WHERE locktype = 'advisory' AND objid = {SCRAPER_LOCK_ID}
-        """))
-        await db.commit()
+            WHERE locktype = 'advisory' AND objid = :lock_id
+            LIMIT 1
+        """), {"lock_id": SCRAPER_LOCK_ID})
+
+        terminated = terminate_result.scalar()
+        if not terminated:
+            log_to_console("⚠️ Failed to terminate stale lock holder")
+            return False
+
+        # Give terminated session time to clean up
+        await asyncio.sleep(0.1)
+
         # Try to acquire again
         result = await db.execute(
-            text(f"SELECT pg_try_advisory_lock({SCRAPER_LOCK_ID})")
+            text("SELECT pg_try_advisory_lock(:lock_id)"),
+            {"lock_id": SCRAPER_LOCK_ID}
         )
         if result.scalar():
             log_to_console("✅ Successfully acquired lock after clearing stale lock")
@@ -163,7 +177,10 @@ async def acquire_scraper_lock(db: AsyncSession) -> bool:
 
 async def release_scraper_lock(db: AsyncSession) -> None:
     """Release the session-level advisory lock."""
-    await db.execute(text(f"SELECT pg_advisory_unlock({SCRAPER_LOCK_ID})"))
+    await db.execute(
+        text("SELECT pg_advisory_unlock(:lock_id)"),
+        {"lock_id": SCRAPER_LOCK_ID}
+    )
     log_to_console("🔓 Released scraper lock")
 
 
