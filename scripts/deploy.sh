@@ -78,18 +78,8 @@ echo "▶️  Starting Backend..."
 $DOCKER run -d \
   --name zapply-backend-prod \
   --network zapply_zapply-network \
+  --env-file .env.production \
   -e DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-zapply}:${POSTGRES_PASSWORD}@zapply-postgres-prod:5432/${POSTGRES_DB:-zapply} \
-  -e ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY} \
-  -e WORKING_NOMADS_USERNAME=${WORKING_NOMADS_USERNAME} \
-  -e WORKING_NOMADS_PASSWORD=${WORKING_NOMADS_PASSWORD} \
-  -e REMOTIVE_USERNAME=${REMOTIVE_USERNAME} \
-  -e REMOTIVE_PASSWORD=${REMOTIVE_PASSWORD} \
-  -e DAILYREMOTE_TOKEN=${DAILYREMOTE_TOKEN} \
-  -e ADMIN_EMAIL=${ADMIN_EMAIL} \
-  -e ADMIN_PASSWORD=${ADMIN_PASSWORD} \
-  -e JWT_SECRET_KEY=${JWT_SECRET_KEY} \
-  -e JWT_ALGORITHM=${JWT_ALGORITHM:-HS256} \
-  -e JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES:-43200} \
   -e PYTHONUNBUFFERED=1 \
   -v zapply_app_logs:/app/logs \
   -v zapply_app_data:/app/data \
