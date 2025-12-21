@@ -497,13 +497,22 @@ DAILYREMOTE_TOKEN=your_premium_token_here
 
 **Location Filters:**
 
-The scraper runs 3 separate queries to cover all relevant locations:
+The scraper runs 3 separate queries **sequentially** (not in parallel) to cover all relevant locations:
 
-| Location | URL Filter |
-|----------|------------|
-| Worldwide | `location_region=Worldwide` |
-| South America | `location_region=South%20America` |
-| Colombia | `location_country=Colombia` |
+| Order | Location | URL Filter |
+|-------|----------|------------|
+| 1 | Worldwide | `location_region=Worldwide` |
+| 2 | South America | `location_region=South%20America` |
+| 3 | Colombia | `location_country=Colombia` |
+
+**Why sequential?** The scraper uses a shared browser context with premium session cookies. Running in parallel would require multiple browser instances and sessions.
+
+**Cross-location deduplication:** A job appearing in multiple location filters is only scraped once. The scraper maintains an `all_seen_slugs` set across all 3 locations - if a slug was already seen in Worldwide, it won't be re-scraped when found in South America or Colombia.
+
+**Expected volumes (per location, page 1 only):**
+- Worldwide: ~30 jobs/page, ~13 pages = ~360 jobs/week
+- South America: ~30 jobs/page (many overlap with Worldwide)
+- Colombia: ~20-30 jobs/page (many overlap with above)
 
 **URL Pattern:**
 ```
