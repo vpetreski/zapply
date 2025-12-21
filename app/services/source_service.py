@@ -119,6 +119,7 @@ def get_source_credentials(source: ScraperSource) -> dict[str, str]:
         "username": os.getenv(f"{prefix}_USERNAME", ""),
         "password": os.getenv(f"{prefix}_PASSWORD", ""),
         "api_key": os.getenv(f"{prefix}_API_KEY", ""),
+        "token": os.getenv(f"{prefix}_TOKEN", ""),
     }
 
 
@@ -193,7 +194,8 @@ async def sync_sources_with_registry(db: AsyncSession) -> dict[str, list[str]]:
                 name=metadata["name"],
                 label=metadata["label"],
                 description=metadata["description"],
-                enabled=False,  # New sources start disabled
+                credentials_env_prefix=metadata.get("credentials_env_prefix", ""),
+                enabled=True,  # New sources start enabled by default
                 priority=100,
             )
             db.add(source)

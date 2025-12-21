@@ -472,6 +472,81 @@ Remotive doesn't have a date filter API parameter. Instead, the scraper filters 
 
 ---
 
+### DailyRemote
+
+| Property | Value |
+|----------|-------|
+| **Name** | `dailyremote` |
+| **File** | `app/scraper/dailyremote.py` |
+| **Type** | Premium (token-based activation) |
+| **Auth** | Premium token (no username/password) |
+
+**Environment Variables:**
+```
+DAILYREMOTE_TOKEN=your_premium_token_here
+```
+
+**How it works:**
+1. Launches headless Chromium via Playwright with stealth mode (to bypass Cloudflare)
+2. Activates premium session using token URL
+3. Scrapes 3 location filters sequentially: Worldwide, South America, Colombia
+4. For each location, paginates through jobs until encountering jobs older than 7 days
+5. Collects all job slugs first, then visits each job detail page
+6. Extracts: title, company, description, location, apply URL
+7. Resolves apply URLs to get actual job page (for deduplication)
+
+**Location Filters:**
+
+The scraper runs 3 separate queries **sequentially** (not in parallel) to cover all relevant locations:
+
+| Order | Location | URL Filter |
+|-------|----------|------------|
+| 1 | Worldwide | `location_region=Worldwide` |
+| 2 | South America | `location_region=South%20America` |
+| 3 | Colombia | `location_country=Colombia` |
+
+**Why sequential?** The scraper uses a shared browser context with premium session cookies. Running in parallel would require multiple browser instances and sessions.
+
+**Cross-location deduplication:** A job appearing in multiple location filters is only scraped once. The scraper maintains an `all_seen_slugs` set across all 3 locations - if a slug was already seen in Worldwide, it won't be re-scraped when found in South America or Colombia.
+
+**Expected volumes (per location, page 1 only):**
+- Worldwide: ~30 jobs/page, ~13 pages = ~360 jobs/week
+- South America: ~30 jobs/page (many overlap with Worldwide)
+- Colombia: ~20-30 jobs/page (many overlap with above)
+
+**URL Pattern:**
+```
+https://dailyremote.com/remote-software-development-jobs?page=1&sort_by=time&location_region=Worldwide#main
+```
+
+**Date Filtering Logic:**
+
+Jobs are filtered by date labels on each listing:
+- `23 hours ago` → 0 days (included)
+- `Yesterday` → 1 day (included)
+- `2 Days Ago` → 2 days (included)
+- `1 Week Ago` → 7 days (included)
+- `2 Weeks Ago` → 14 days (excluded - stops scraping)
+
+**Cloudflare Bypass:**
+
+DailyRemote uses Cloudflare protection. The scraper uses `playwright-stealth` to bypass detection:
+- Custom user agent
+- Stealth scripts to hide automation markers
+- Realistic browser context
+
+**Deduplication:**
+- Within source: `source_id` (job slug with numeric ID, e.g., `senior-developer-4374702`) ✅
+- Cross-source: `resolved_url` (actual job posting URL from Apply button) ✅
+- Cross-location: Slugs are tracked across all 3 location filters to avoid duplicates
+
+**Rate Limiting:**
+- 2 second delay after each page load
+- 1 second delay after every 10 job detail scrapes
+- 1 second delay between pagination
+
+---
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
