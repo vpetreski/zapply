@@ -193,7 +193,7 @@ async def sync_sources_with_registry(db: AsyncSession) -> dict[str, list[str]]:
                 name=metadata["name"],
                 label=metadata["label"],
                 description=metadata["description"],
-                enabled=False,  # New sources start disabled
+                enabled=True,  # New sources start enabled by default
                 priority=100,
             )
             db.add(source)
