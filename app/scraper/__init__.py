@@ -8,5 +8,6 @@ from app.scraper.registry import ScraperRegistry
 from app.scraper.working_nomads import WorkingNomadsScraper
 from app.scraper.weworkremotely import WeWorkRemotelyScraper
 from app.scraper.remotive import RemotiveScraper
+from app.scraper.dailyremote import DailyRemoteScraper
 
-__all__ = ["BaseScraper", "ScraperRegistry", "WorkingNomadsScraper", "WeWorkRemotelyScraper", "RemotiveScraper"]
+__all__ = ["BaseScraper", "ScraperRegistry", "WorkingNomadsScraper", "WeWorkRemotelyScraper", "RemotiveScraper", "DailyRemoteScraper"]

@@ -472,6 +472,72 @@ Remotive doesn't have a date filter API parameter. Instead, the scraper filters 
 
 ---
 
+### DailyRemote
+
+| Property | Value |
+|----------|-------|
+| **Name** | `dailyremote` |
+| **File** | `app/scraper/dailyremote.py` |
+| **Type** | Premium (token-based activation) |
+| **Auth** | Premium token (no username/password) |
+
+**Environment Variables:**
+```
+DAILYREMOTE_TOKEN=your_premium_token_here
+```
+
+**How it works:**
+1. Launches headless Chromium via Playwright with stealth mode (to bypass Cloudflare)
+2. Activates premium session using token URL
+3. Scrapes 3 location filters sequentially: Worldwide, South America, Colombia
+4. For each location, paginates through jobs until encountering jobs older than 7 days
+5. Collects all job slugs first, then visits each job detail page
+6. Extracts: title, company, description, location, apply URL
+7. Resolves apply URLs to get actual job page (for deduplication)
+
+**Location Filters:**
+
+The scraper runs 3 separate queries to cover all relevant locations:
+
+| Location | URL Filter |
+|----------|------------|
+| Worldwide | `location_region=Worldwide` |
+| South America | `location_region=South%20America` |
+| Colombia | `location_country=Colombia` |
+
+**URL Pattern:**
+```
+https://dailyremote.com/remote-software-development-jobs?page=1&sort_by=time&location_region=Worldwide#main
+```
+
+**Date Filtering Logic:**
+
+Jobs are filtered by date labels on each listing:
+- `23 hours ago` → 0 days (included)
+- `Yesterday` → 1 day (included)
+- `2 Days Ago` → 2 days (included)
+- `1 Week Ago` → 7 days (included)
+- `2 Weeks Ago` → 14 days (excluded - stops scraping)
+
+**Cloudflare Bypass:**
+
+DailyRemote uses Cloudflare protection. The scraper uses `playwright-stealth` to bypass detection:
+- Custom user agent
+- Stealth scripts to hide automation markers
+- Realistic browser context
+
+**Deduplication:**
+- Within source: `source_id` (job slug with numeric ID, e.g., `senior-developer-4374702`) ✅
+- Cross-source: `resolved_url` (actual job posting URL from Apply button) ✅
+- Cross-location: Slugs are tracked across all 3 location filters to avoid duplicates
+
+**Rate Limiting:**
+- 2 second delay after each page load
+- 1 second delay after every 10 job detail scrapes
+- 1 second delay between pagination
+
+---
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
