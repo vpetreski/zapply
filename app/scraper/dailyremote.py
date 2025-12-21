@@ -147,6 +147,7 @@ class DailyRemoteScraper(BaseScraper):
         location_url: str,
         existing_slugs: set[str],
         all_seen_slugs: set[str],
+        since_days: int = 7,
         progress_callback: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> list[dict[str, Any]]:
         """
@@ -157,6 +158,7 @@ class DailyRemoteScraper(BaseScraper):
             location_url: URL with location filter
             existing_slugs: Slugs already in database
             all_seen_slugs: Slugs seen in this scraping session (for dedup across locations)
+            since_days: Number of days to look back
             progress_callback: Optional progress callback
 
         Returns:
@@ -168,7 +170,7 @@ class DailyRemoteScraper(BaseScraper):
         jobs = []
         page_num = 1
         max_pages = 50  # Safety limit
-        cutoff_days = 7  # Stop when we see jobs older than this
+        cutoff_days = since_days  # Stop when we see jobs older than this
 
         log_to_console(f"\n🌍 Scraping location: {location_name}")
         if progress_callback:
@@ -199,8 +201,8 @@ class DailyRemoteScraper(BaseScraper):
                 for card in job_cards:
                     card_text = await card.inner_text()
 
-                    # Check date
-                    date_match = re.search(r'(\d+\s*(?:hour|day|week|month)s?\s*ago|yesterday)', card_text, re.IGNORECASE)
+                    # Check date - match all patterns _parse_date_label handles
+                    date_match = re.search(r'(just now|now|\d+\s*(?:sec(?:ond)?|min(?:ute)?|hour|day|week|month)s?\s*ago|yesterday)', card_text, re.IGNORECASE)
                     if date_match:
                         date_label = date_match.group(1)
                         days_ago = self._parse_date_label(date_label)
@@ -374,7 +376,11 @@ class DailyRemoteScraper(BaseScraper):
                         else:
                             continue  # Skip invalid URLs
                         # Resolve redirect to get actual job URL
-                        resolved_url = await resolve_redirect_url(apply_url)
+                        try:
+                            resolved_url = await resolve_redirect_url(apply_url)
+                        except Exception as e:
+                            log_to_console(f"   ⚠️ Failed to resolve URL for {slug}: {str(e)}")
+                            resolved_url = None
                         break
 
             return {
@@ -459,6 +465,7 @@ class DailyRemoteScraper(BaseScraper):
                     location_url=location_url,
                     existing_slugs=existing_slugs,
                     all_seen_slugs=all_seen_slugs,
+                    since_days=since_days,
                     progress_callback=progress_callback,
                 )
 
