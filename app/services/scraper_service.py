@@ -255,6 +255,7 @@ async def scrape_source_parallel(
                     "username": os.getenv(f"{source_credentials_prefix}_USERNAME", ""),
                     "password": os.getenv(f"{source_credentials_prefix}_PASSWORD", ""),
                     "api_key": os.getenv(f"{source_credentials_prefix}_API_KEY", ""),
+                    "token": os.getenv(f"{source_credentials_prefix}_TOKEN", ""),
                 }
 
             scraper = ScraperRegistry.create_instance(

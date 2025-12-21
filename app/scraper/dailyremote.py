@@ -24,6 +24,7 @@ class DailyRemoteScraper(BaseScraper):
     SOURCE_NAME = "dailyremote"
     SOURCE_LABEL = "DailyRemote"
     SOURCE_DESCRIPTION = "Premium remote job board with software development positions"
+    CREDENTIALS_ENV_PREFIX = "DAILYREMOTE"
     REQUIRES_LOGIN = True
     REQUIRED_CREDENTIALS = ["token"]
 

@@ -18,6 +18,7 @@ class BaseScraper(ABC):
     SOURCE_NAME: str = ""
     SOURCE_LABEL: str = ""
     SOURCE_DESCRIPTION: str = ""
+    CREDENTIALS_ENV_PREFIX: str = ""  # e.g., "DAILYREMOTE" -> reads DAILYREMOTE_TOKEN
     REQUIRES_LOGIN: bool = False
     REQUIRED_CREDENTIALS: list[str] = []  # e.g., ["username", "password"] or ["api_key"]
 
@@ -109,6 +110,7 @@ class BaseScraper(ABC):
             "name": cls.SOURCE_NAME,
             "label": cls.SOURCE_LABEL,
             "description": cls.SOURCE_DESCRIPTION,
+            "credentials_env_prefix": cls.CREDENTIALS_ENV_PREFIX,
             "requires_login": cls.REQUIRES_LOGIN,
             "required_credentials": cls.REQUIRED_CREDENTIALS,
         }
