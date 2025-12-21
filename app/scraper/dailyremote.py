@@ -190,9 +190,13 @@ class DailyRemoteScraper(BaseScraper):
             # Check if we've hit the job limit
             if job_limit > 0 and len(slugs_to_scrape) >= remaining_limit:
                 log_to_console(f"   🛑 Reached job limit ({job_limit}), stopping collection")
+                if progress_callback:
+                    await progress_callback(f"Job limit ({job_limit}) reached", "info")
                 break
             page_url = self._get_page_url(location_url, page_num)
             log_to_console(f"   📄 Page {page_num}")
+            if progress_callback:
+                await progress_callback(f"Scanning {location_name} page {page_num}...", "info")
 
             try:
                 await self.page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
@@ -203,6 +207,8 @@ class DailyRemoteScraper(BaseScraper):
 
                 if not job_cards:
                     log_to_console(f"   ⚠️  No jobs found on page {page_num}")
+                    if progress_callback:
+                        await progress_callback(f"No jobs found on page {page_num}", "warning")
                     break
 
                 log_to_console(f"   Found {len(job_cards)} job cards")
@@ -219,6 +225,8 @@ class DailyRemoteScraper(BaseScraper):
 
                         if days_ago is not None and days_ago > cutoff_days:
                             log_to_console(f"   📅 Found job from {days_ago} days ago - stopping collection")
+                            if progress_callback:
+                                await progress_callback(f"Found job from {days_ago} days ago, stopping", "info")
                             found_old_job = True
                             break
 
@@ -244,6 +252,8 @@ class DailyRemoteScraper(BaseScraper):
                     # Check if we've hit the job limit
                     if job_limit > 0 and len(slugs_to_scrape) >= remaining_limit:
                         log_to_console(f"   🛑 Reached job limit ({job_limit}), stopping collection")
+                        if progress_callback:
+                            await progress_callback(f"Job limit ({job_limit}) reached", "info")
                         found_old_job = True  # Reuse flag to exit outer loop
                         break
 
@@ -263,6 +273,8 @@ class DailyRemoteScraper(BaseScraper):
 
             except Exception as e:
                 log_to_console(f"   ❌ Error on page {page_num}: {str(e)}")
+                if progress_callback:
+                    await progress_callback(f"Error on page {page_num}: {str(e)}", "error")
                 break
 
         # Phase 2: Scrape job details for collected slugs
@@ -271,20 +283,28 @@ class DailyRemoteScraper(BaseScraper):
             slugs_to_scrape = slugs_to_scrape[:remaining_limit]
 
         log_to_console(f"   📝 Scraping {len(slugs_to_scrape)} job details...")
+        if progress_callback:
+            await progress_callback(f"Scraping {len(slugs_to_scrape)} job details for {location_name}...", "info")
 
         for i, slug in enumerate(slugs_to_scrape, 1):
             job_data = await self._scrape_job_details(slug)
             if job_data:
                 jobs.append(job_data)
                 log_to_console(f"   [{i}/{len(slugs_to_scrape)}] ✅ {job_data.get('title', slug)[:50]}")
+                if progress_callback:
+                    await progress_callback(f"[{i}/{len(slugs_to_scrape)}] Scraped: {job_data.get('title', slug)[:40]}", "info")
             else:
                 log_to_console(f"   [{i}/{len(slugs_to_scrape)}] ❌ Failed: {slug}")
+                if progress_callback:
+                    await progress_callback(f"[{i}/{len(slugs_to_scrape)}] Failed: {slug}", "warning")
 
             # Small delay between job detail scrapes
             if i % 10 == 0:
                 await self.page.wait_for_timeout(1000)
 
         log_to_console(f"   📊 Found {len(jobs)} jobs for {location_name}")
+        if progress_callback:
+            await progress_callback(f"Found {len(jobs)} jobs for {location_name}", "success")
         return jobs
 
     async def _scrape_job_details(self, slug: str) -> dict[str, Any] | None:
@@ -476,6 +496,8 @@ class DailyRemoteScraper(BaseScraper):
                 await progress_callback("Activating premium session...", "info")
             if not await self.login():
                 log_to_console("❌ Premium activation failed, cannot continue")
+                if progress_callback:
+                    await progress_callback("Premium activation failed, cannot continue", "error")
                 return jobs
 
             # Scrape each location
@@ -483,6 +505,8 @@ class DailyRemoteScraper(BaseScraper):
                 # Skip if we've already hit the limit
                 if job_limit > 0 and len(jobs) >= job_limit:
                     log_to_console(f"🛑 Job limit ({job_limit}) reached, skipping remaining locations")
+                    if progress_callback:
+                        await progress_callback(f"Job limit ({job_limit}) reached, stopping", "info")
                     break
 
                 location_jobs = await self._scrape_location(
@@ -510,10 +534,12 @@ class DailyRemoteScraper(BaseScraper):
             log_to_console(f"\n📊 DailyRemote Scraping Summary:")
             for loc, count in location_stats.items():
                 log_to_console(f"   {loc}: {count} jobs")
+                if progress_callback:
+                    await progress_callback(f"{loc}: {count} jobs", "info")
             log_to_console(f"   Total: {len(jobs)} jobs")
 
             if progress_callback:
-                await progress_callback(f"Successfully scraped {len(jobs)} jobs!", "success")
+                await progress_callback(f"Completed! Total: {len(jobs)} jobs", "success")
 
         except Exception as e:
             log_to_console(f"❌ Scraping failed: {str(e)}")
