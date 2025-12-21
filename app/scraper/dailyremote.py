@@ -88,12 +88,13 @@ class DailyRemoteScraper(BaseScraper):
                 log_to_console("❌ Token activation failed - invalid or expired token")
                 return False
 
-            # If we got redirected to homepage or see welcome message, we're logged in
-            if "dailyremote.com" in current_url:
+            # If we're no longer on the activation URL, activation succeeded
+            if "/premium/activate" not in current_url:
                 log_to_console("✅ Premium session activated!")
                 return True
 
-            log_to_console(f"⚠️ Uncertain activation status, continuing anyway... URL: {current_url}")
+            # Still on activation page might indicate an issue
+            log_to_console(f"⚠️ Still on activation page, continuing anyway... URL: {current_url}")
             return True
 
         except Exception as e:
@@ -117,7 +118,11 @@ class DailyRemoteScraper(BaseScraper):
         """
         label = label.lower().strip()
 
-        if "hour" in label or "minute" in label:
+        # Handle "just now", "now", etc.
+        if "just" in label or label == "now":
+            return 0
+        # Handle minutes and hours (same day)
+        elif "min" in label or "hour" in label or "sec" in label:
             return 0
         elif "yesterday" in label:
             return 1
@@ -360,8 +365,14 @@ class DailyRemoteScraper(BaseScraper):
                 btn = await self.page.query_selector(selector)
                 if btn:
                     href = await btn.get_attribute('href')
-                    if href and href.startswith('http'):
-                        apply_url = href
+                    if href:
+                        # Handle both absolute and relative URLs
+                        if href.startswith('http'):
+                            apply_url = href
+                        elif href.startswith('/'):
+                            apply_url = f"{self.base_url}{href}"
+                        else:
+                            continue  # Skip invalid URLs
                         # Resolve redirect to get actual job URL
                         resolved_url = await resolve_redirect_url(apply_url)
                         break
