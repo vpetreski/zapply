@@ -148,6 +148,8 @@ class DailyRemoteScraper(BaseScraper):
         existing_slugs: set[str],
         all_seen_slugs: set[str],
         since_days: int = 7,
+        job_limit: int = 0,
+        current_job_count: int = 0,
         progress_callback: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> list[dict[str, Any]]:
         """
@@ -159,6 +161,8 @@ class DailyRemoteScraper(BaseScraper):
             existing_slugs: Slugs already in database
             all_seen_slugs: Slugs seen in this scraping session (for dedup across locations)
             since_days: Number of days to look back
+            job_limit: Maximum jobs to collect (0 = unlimited)
+            current_job_count: Jobs already collected from previous locations
             progress_callback: Optional progress callback
 
         Returns:
@@ -179,8 +183,13 @@ class DailyRemoteScraper(BaseScraper):
         # Phase 1: Collect all job slugs from listing pages
         slugs_to_scrape = []
         found_old_job = False
+        remaining_limit = job_limit - current_job_count if job_limit > 0 else 0
 
         while page_num <= max_pages and not found_old_job:
+            # Check if we've hit the job limit
+            if job_limit > 0 and len(slugs_to_scrape) >= remaining_limit:
+                log_to_console(f"   🛑 Reached job limit ({job_limit}), stopping collection")
+                break
             page_url = self._get_page_url(location_url, page_num)
             log_to_console(f"   📄 Page {page_num}")
 
@@ -231,6 +240,12 @@ class DailyRemoteScraper(BaseScraper):
                     slugs_to_scrape.append(slug)
                     page_has_new_jobs = True
 
+                    # Check if we've hit the job limit
+                    if job_limit > 0 and len(slugs_to_scrape) >= remaining_limit:
+                        log_to_console(f"   🛑 Reached job limit ({job_limit}), stopping collection")
+                        found_old_job = True  # Reuse flag to exit outer loop
+                        break
+
                 # If no new jobs on this page (all duplicates), stop
                 if not page_has_new_jobs and not found_old_job:
                     log_to_console(f"   ⏭️  No new jobs on page {page_num}")
@@ -250,6 +265,10 @@ class DailyRemoteScraper(BaseScraper):
                 break
 
         # Phase 2: Scrape job details for collected slugs
+        # Limit slugs if needed (safety check)
+        if job_limit > 0 and len(slugs_to_scrape) > remaining_limit:
+            slugs_to_scrape = slugs_to_scrape[:remaining_limit]
+
         log_to_console(f"   📝 Scraping {len(slugs_to_scrape)} job details...")
 
         for i, slug in enumerate(slugs_to_scrape, 1):
@@ -460,12 +479,19 @@ class DailyRemoteScraper(BaseScraper):
 
             # Scrape each location
             for location_name, location_url in self.LOCATION_URLS:
+                # Skip if we've already hit the limit
+                if job_limit > 0 and len(jobs) >= job_limit:
+                    log_to_console(f"🛑 Job limit ({job_limit}) reached, skipping remaining locations")
+                    break
+
                 location_jobs = await self._scrape_location(
                     location_name=location_name,
                     location_url=location_url,
                     existing_slugs=existing_slugs,
                     all_seen_slugs=all_seen_slugs,
                     since_days=since_days,
+                    job_limit=job_limit,
+                    current_job_count=len(jobs),
                     progress_callback=progress_callback,
                 )
 
@@ -475,11 +501,6 @@ class DailyRemoteScraper(BaseScraper):
                 for job_data in location_jobs:
                     normalized_job = self.normalize_job(job_data)
                     jobs.append(normalized_job)
-
-                # Check job limit
-                if job_limit > 0 and len(jobs) >= job_limit:
-                    log_to_console(f"🛑 Reached job limit of {job_limit}")
-                    break
 
                 # Small delay between locations
                 await self.page.wait_for_timeout(2000)
