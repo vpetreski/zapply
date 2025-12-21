@@ -17,17 +17,22 @@ logger = logging.getLogger(__name__)
 scheduler: Optional[AsyncIOScheduler] = None
 
 
-async def run_scheduled_pipeline(trigger_type: str) -> None:
+async def run_scheduled_pipeline(trigger_type: str, retry_count: int = 0) -> None:
     """
     Run the pipeline with the specified trigger type.
 
     Args:
         trigger_type: The trigger type (scheduled_daily or scheduled_hourly)
+        retry_count: Current retry attempt (for connection failure recovery)
     """
-    logger.info(f"Starting scheduled pipeline run: {trigger_type}")
+    import asyncio
 
-    # Get database session using proper async generator pattern
+    MAX_RETRIES = 2
+    logger.info(f"Starting scheduled pipeline run: {trigger_type}" + (f" (retry {retry_count})" if retry_count > 0 else ""))
+
+    db_generator = None
     try:
+        # Get database session using proper async generator pattern
         db_generator = get_db_session()
         db = await db_generator.__anext__()
         await scrape_and_save_jobs(db, trigger_type=trigger_type)
@@ -39,13 +44,37 @@ async def run_scheduled_pipeline(trigger_type: str) -> None:
         else:
             logger.error(f"Scheduled pipeline validation failed: {e}")
     except Exception as e:
-        logger.error(f"Scheduled pipeline run failed: {trigger_type}, error: {e}")
+        error_str = str(e)
+        # Check if this is a connection error that might be recoverable
+        is_connection_error = any(msg in error_str for msg in [
+            "connection is closed",
+            "connection was closed",
+            "ConnectionDoesNotExistError",
+            "InterfaceError",
+        ])
+
+        if is_connection_error and retry_count < MAX_RETRIES:
+            logger.warning(f"Database connection error, will retry in 5 seconds: {e}")
+            # Close current generator if possible
+            if db_generator:
+                try:
+                    await db_generator.aclose()
+                except Exception:
+                    pass
+            # Wait a bit for connection pool to recover
+            await asyncio.sleep(5)
+            # Retry with fresh session
+            await run_scheduled_pipeline(trigger_type, retry_count + 1)
+            return
+        else:
+            logger.error(f"Scheduled pipeline run failed: {trigger_type}, error: {e}")
     finally:
         # Properly close the generator to trigger cleanup
-        try:
-            await db_generator.aclose()
-        except StopAsyncIteration:
-            pass
+        if db_generator:
+            try:
+                await db_generator.aclose()
+            except (StopAsyncIteration, Exception):
+                pass
 
 
 async def daily_run() -> None:
