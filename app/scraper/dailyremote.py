@@ -332,20 +332,31 @@ class DailyRemoteScraper(BaseScraper):
                 title = (await title_elem.inner_text()).strip()
 
             # Company - look for company name element
+            # DailyRemote uses /remote-company/company-name links
             company = "Unknown"
             company_selectors = [
-                '[class*="company"] a',
-                '[class*="company"]',
-                'a[href*="/company/"]',
-                'h2',  # Sometimes company is in h2
+                'a[href*="/remote-company/"]',  # Most reliable - company profile link
+                'h2 a[href*="/remote-company/"]',  # Company name in h2 with link
             ]
             for selector in company_selectors:
                 elem = await self.page.query_selector(selector)
                 if elem:
                     text = (await elem.inner_text()).strip()
-                    if text and len(text) < 100:
+                    # Skip if it's a "View More Jobs" type link
+                    if text and len(text) < 100 and "view more" not in text.lower():
                         company = text
                         break
+
+            # Fallback: try h2 if no company link found
+            if company == "Unknown":
+                h2_elem = await self.page.query_selector('h2')
+                if h2_elem:
+                    text = (await h2_elem.inner_text()).strip()
+                    # Make sure it's not a section header like "About us", "The role", etc.
+                    section_headers = ["about", "role", "what you", "must have", "requirements",
+                                       "responsibilities", "benefits", "similar", "apply"]
+                    if text and len(text) < 100 and not any(h in text.lower() for h in section_headers):
+                        company = text
 
             # Description - main content area
             description = ""
