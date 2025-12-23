@@ -193,13 +193,15 @@ class HimalayasScraper(BaseScraper):
             "jobs_scanned": 0,
             "eligible_found": 0,
             "skipped_existing": 0,
-            "skipped_old": 0,
+            "skipped_old": 0,  # Total old jobs skipped
+            "skipped_no_guid": 0,  # Jobs missing GUID
             "rejected": {
                 "not_dev_category": 0,
                 "timezone_mismatch": 0,
                 "location_restricted": 0,
             }
         }
+        consecutive_old_jobs = 0  # Separate counter for consecutive old jobs
 
         log_to_console("🚀 Starting Himalayas API scraper...")
         if progress_callback:
@@ -251,19 +253,22 @@ class HimalayasScraper(BaseScraper):
 
                     if pub_date < cutoff_date:
                         stats["skipped_old"] += 1
+                        consecutive_old_jobs += 1
                         # If we see too many old jobs consecutively, stop
-                        if stats["skipped_old"] > self.MAX_CONSECUTIVE_OLD_JOBS:
-                            log_to_console(f"   📅 Found {stats['skipped_old']} old jobs, stopping")
+                        if consecutive_old_jobs > self.MAX_CONSECUTIVE_OLD_JOBS:
+                            log_to_console(f"   📅 Found {consecutive_old_jobs} consecutive old jobs, stopping")
                             found_old_job = True
                             break
                         continue
 
-                    # Reset old job counter if we find a recent one
-                    stats["skipped_old"] = 0
+                    # Reset consecutive counter (but not total) when we find a recent job
+                    consecutive_old_jobs = 0
 
                     # Extract slug for dedup
                     slug = self._extract_slug(job.get("guid", ""))
                     if not slug:
+                        stats["skipped_no_guid"] += 1
+                        log_to_console(f"   ⚠️ Job missing GUID, skipping: {job.get('title', 'Unknown')[:30]}")
                         continue
 
                     # Skip if already exists or seen in this batch
@@ -303,8 +308,11 @@ class HimalayasScraper(BaseScraper):
         log_to_console(f"   Pages fetched: {stats['pages_fetched']}")
         log_to_console(f"   Jobs scanned: {stats['jobs_scanned']}")
         log_to_console(f"   Eligible found: {len(jobs)}")
-        log_to_console(f"   Skipped (existing): {stats['skipped_existing']}")
-        log_to_console(f"   Rejected breakdown:")
+        log_to_console(f"   Skipped:")
+        log_to_console(f"     - Already in DB: {stats['skipped_existing']}")
+        log_to_console(f"     - Too old: {stats['skipped_old']}")
+        log_to_console(f"     - Missing GUID: {stats['skipped_no_guid']}")
+        log_to_console(f"   Rejected:")
         log_to_console(f"     - Not dev category: {stats['rejected']['not_dev_category']}")
         log_to_console(f"     - Timezone mismatch: {stats['rejected']['timezone_mismatch']}")
         log_to_console(f"     - Location restricted: {stats['rejected']['location_restricted']}")
