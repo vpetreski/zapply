@@ -6,7 +6,6 @@ No authentication required.
 """
 
 import asyncio
-import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -35,20 +34,19 @@ class HimalayasScraper(BaseScraper):
     MAX_PER_PAGE = 20  # API max is 20
     REQUEST_DELAY = 1.5  # Seconds between requests to avoid rate limiting
     MAX_PAGES = 200  # Safety limit (200 * 20 = 4000 jobs max)
+    MAX_RETRIES = 3  # Max retries on 429 rate limit
+    MAX_CONSECUTIVE_OLD_JOBS = 50  # Stop after this many old jobs in a row
+    MAX_LOCATION_DISPLAY = 3  # Max locations to show in location string
 
     # Categories that indicate software engineering roles
     # Note: "Research & Development" is excluded because it includes non-software roles
     # like Clinical Trial Coordinators. Better to be more specific.
     DEVELOPER_CATEGORIES = {"Developer", "Data Science"}
 
-    # LATAM countries for location filtering
-    LATAM_COUNTRIES = {
-        "Colombia", "Argentina", "Brazil", "Chile", "Mexico", "Peru",
-        "Ecuador", "Uruguay", "Venezuela", "Bolivia", "Paraguay",
-        "Costa Rica", "Panama", "Guatemala", "Honduras", "Nicaragua",
-        "El Salvador", "Dominican Republic", "Puerto Rico", "Cuba",
-        "Jamaica", "Trinidad and Tobago"
-    }
+    # Only Colombia is accepted as a specific country
+    # Other LATAM countries (Brazil, Mexico, etc.) are NOT accepted
+    # unless the job explicitly says "LATAM" or "South America" region
+    ACCEPTED_COUNTRIES = {"Colombia"}
 
     # Colombia's timezone offset
     COLOMBIA_TZ_OFFSET = -5
@@ -111,23 +109,24 @@ class HimalayasScraper(BaseScraper):
         if "worldwide" in loc_lower or "global" in loc_lower:
             return True, "explicit_worldwide"
 
-        # Check for LATAM mentions
+        # Check for explicit LATAM/South America region mentions
         if "latin" in loc_lower or "south america" in loc_lower or "latam" in loc_lower:
             return True, "explicit_latam"
 
-        # Check for specific LATAM countries
-        if any(country in loc_restrictions for country in self.LATAM_COUNTRIES):
-            return True, "latam_country"
+        # Check for Colombia specifically (not other LATAM countries)
+        if any(country in loc_restrictions for country in self.ACCEPTED_COUNTRIES):
+            return True, "colombia"
 
-        # Job is restricted to non-LATAM locations
+        # Job is restricted to other specific countries - reject
         return False, "location_restricted"
 
-    async def _fetch_page(self, offset: int) -> dict[str, Any] | None:
+    async def _fetch_page(self, offset: int, retry_count: int = 0) -> dict[str, Any] | None:
         """
         Fetch a page of jobs from the API.
 
         Args:
             offset: Pagination offset
+            retry_count: Current retry attempt (for rate limit handling)
 
         Returns:
             API response dict or None on error
@@ -143,9 +142,13 @@ class HimalayasScraper(BaseScraper):
             )
 
             if response.status_code == 429:
-                log_to_console("   ⚠️ Rate limited, waiting 5 seconds...")
-                await asyncio.sleep(5)
-                return await self._fetch_page(offset)
+                if retry_count >= self.MAX_RETRIES:
+                    log_to_console(f"   ❌ Rate limited, max retries ({self.MAX_RETRIES}) exceeded")
+                    return None
+                wait_time = 5 * (retry_count + 1)  # Exponential backoff: 5, 10, 15 seconds
+                log_to_console(f"   ⚠️ Rate limited, waiting {wait_time} seconds (retry {retry_count + 1}/{self.MAX_RETRIES})...")
+                await asyncio.sleep(wait_time)
+                return await self._fetch_page(offset, retry_count + 1)
 
             response.raise_for_status()
             return response.json()
@@ -249,7 +252,7 @@ class HimalayasScraper(BaseScraper):
                     if pub_date < cutoff_date:
                         stats["skipped_old"] += 1
                         # If we see too many old jobs consecutively, stop
-                        if stats["skipped_old"] > 50:
+                        if stats["skipped_old"] > self.MAX_CONSECUTIVE_OLD_JOBS:
                             log_to_console(f"   📅 Found {stats['skipped_old']} old jobs, stopping")
                             found_old_job = True
                             break
@@ -292,6 +295,9 @@ class HimalayasScraper(BaseScraper):
                 await asyncio.sleep(self.REQUEST_DELAY)
                 offset += self.MAX_PER_PAGE
 
+        # Reset client reference after context manager exits
+        self.client = None
+
         # Log summary
         log_to_console(f"\n📊 Himalayas Scraping Summary:")
         log_to_console(f"   Pages fetched: {stats['pages_fetched']}")
@@ -327,22 +333,26 @@ class HimalayasScraper(BaseScraper):
         if not loc_restrictions:
             location = "Worldwide Remote"
         else:
-            location = ", ".join(loc_restrictions[:3])
-            if len(loc_restrictions) > 3:
-                location += f" (+{len(loc_restrictions) - 3} more)"
+            location = ", ".join(loc_restrictions[:self.MAX_LOCATION_DISPLAY])
+            if len(loc_restrictions) > self.MAX_LOCATION_DISPLAY:
+                location += f" (+{len(loc_restrictions) - self.MAX_LOCATION_DISPLAY} more)"
 
         # Build salary string if available
         salary = None
-        min_sal = job.get("minSalary")
-        max_sal = job.get("maxSalary")
-        currency = job.get("currency", "USD")
-        if min_sal or max_sal:
-            if min_sal and max_sal:
-                salary = f"{currency} {min_sal:,} - {max_sal:,}"
-            elif min_sal:
-                salary = f"{currency} {min_sal:,}+"
-            else:
-                salary = f"Up to {currency} {max_sal:,}"
+        try:
+            min_sal = job.get("minSalary")
+            max_sal = job.get("maxSalary")
+            currency = job.get("currency", "USD")
+            if min_sal or max_sal:
+                if min_sal and max_sal:
+                    salary = f"{currency} {int(min_sal):,} - {int(max_sal):,}"
+                elif min_sal:
+                    salary = f"{currency} {int(min_sal):,}+"
+                else:
+                    salary = f"Up to {currency} {int(max_sal):,}"
+        except (ValueError, TypeError):
+            # If salary values aren't numeric, skip salary formatting
+            salary = None
 
         # Extract tags from categories
         tags = job.get("categories", []) + job.get("parentCategories", [])

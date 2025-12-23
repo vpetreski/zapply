@@ -563,11 +563,14 @@ DailyRemote uses Cloudflare protection. The scraper uses `playwright-stealth` to
 2. Paginates through jobs (20 per request, API maximum)
 3. Filters for software engineering categories: `Developer`, `Data Science`
 4. Filters for Colombia-compatible timezone: UTC-5 must be in `timezoneRestrictions`
-5. Filters for LATAM-eligible locations:
-   - Empty `locationRestrictions` (worldwide)
-   - Explicit worldwide/global
-   - LATAM country mention
-6. Stops when jobs older than 7 days are encountered
+5. Filters for eligible locations:
+   - Empty `locationRestrictions` (worldwide remote)
+   - Explicit "Worldwide" or "Global"
+   - Explicit "LATAM" or "South America" region
+   - Colombia specifically
+   - Rejects jobs restricted to other countries (Brazil, Mexico, US, etc.)
+6. Stops when 50+ consecutive old jobs are encountered
+7. Includes retry logic with exponential backoff for rate limiting
 
 **API Details:**
 
@@ -593,15 +596,15 @@ The API doesn't support server-side filtering, so all filtering happens client-s
 3. **Location Filter:**
    - Empty `locationRestrictions` = worldwide remote (✅ included)
    - Contains "Worldwide" or "Global" (✅ included)
-   - Contains "Latin" or "South America" (✅ included)
-   - Contains any LATAM country (✅ included)
-   - Restricted to non-LATAM countries like US/Canada/EU only (❌ excluded)
+   - Contains "Latin America" or "South America" or "LATAM" region (✅ included)
+   - Colombia specifically (✅ included)
+   - Other specific countries like Brazil, Mexico, US, etc. (❌ excluded)
 
 **Expected Volumes:**
 
 Based on testing with 7-day lookback:
-- ~25-30 eligible jobs per week
-- Breakdown: ~6 Worldwide, ~3 Colombia, ~11 Brazil, ~8 Mexico
+- ~9-12 eligible jobs per week
+- Breakdown: ~6 Worldwide Remote, ~3 Colombia
 
 **Unique Advantages:**
 
@@ -627,7 +630,8 @@ This is by design - Himalayas wants to track applications.
 
 **Rate Limiting:**
 - 1.5 second delay between API requests
-- Automatic retry on 429 with 5 second backoff
+- Automatic retry on 429 with exponential backoff (5s, 10s, 15s)
+- Max 3 retries before failing
 
 **Terms of Service Note:**
 
