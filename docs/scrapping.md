@@ -547,6 +547,94 @@ DailyRemote uses Cloudflare protection. The scraper uses `playwright-stealth` to
 
 ---
 
+### Himalayas
+
+| Property | Value |
+|----------|-------|
+| **Name** | `himalayas` |
+| **File** | `app/scraper/himalayas.py` |
+| **Type** | API-based (no browser, no login needed) |
+| **Auth** | None (public API) |
+
+**Environment Variables:** None required
+
+**How it works:**
+1. Fetches job listings from public JSON API (no authentication needed)
+2. Paginates through jobs (20 per request, API maximum)
+3. Filters for software engineering categories: `Developer`, `Data Science`
+4. Filters for Colombia-compatible timezone: UTC-5 must be in `timezoneRestrictions`
+5. Filters for LATAM-eligible locations:
+   - Empty `locationRestrictions` (worldwide)
+   - Explicit worldwide/global
+   - LATAM country mention
+6. Stops when jobs older than 7 days are encountered
+
+**API Details:**
+
+| Property | Value |
+|----------|-------|
+| **Endpoint** | `https://himalayas.app/jobs/api` |
+| **Pagination** | `?limit=20&offset=N` (max 20 per request) |
+| **Rate Limit** | 429 on excessive requests |
+| **Total Jobs** | ~67,000 (most not relevant) |
+
+**Filter Logic:**
+
+The API doesn't support server-side filtering, so all filtering happens client-side:
+
+1. **Category Filter:**
+   - Job must have `parentCategories` containing: `Developer` or `Data Science`
+   - Excludes: `Research & Development` (too broad, includes clinical roles)
+
+2. **Timezone Filter:**
+   - Job's `timezoneRestrictions` must include `-5` (Colombia's UTC offset)
+   - Empty `timezoneRestrictions` = any timezone allowed (included)
+
+3. **Location Filter:**
+   - Empty `locationRestrictions` = worldwide remote (✅ included)
+   - Contains "Worldwide" or "Global" (✅ included)
+   - Contains "Latin" or "South America" (✅ included)
+   - Contains any LATAM country (✅ included)
+   - Restricted to non-LATAM countries like US/Canada/EU only (❌ excluded)
+
+**Expected Volumes:**
+
+Based on testing with 7-day lookback:
+- ~25-30 eligible jobs per week
+- Breakdown: ~6 Worldwide, ~3 Colombia, ~11 Brazil, ~8 Mexico
+
+**Unique Advantages:**
+
+1. **Timezone filtering**: Only major board with timezone restrictions in API
+2. **No authentication needed**: Public API, no credentials required
+3. **Fast**: Pure API calls, no browser automation
+4. **Curated listings**: Verified companies with detailed profiles
+
+**Deduplication:**
+- Within source: `source_id` (job slug from `guid` URL, e.g., `software-engineer-123456`) ✅
+- Cross-source: **Not available** ❌
+
+**Why no cross-source dedup?**
+
+Himalayas job links (`applicationLink`) point directly to Himalayas pages, not to company job pages. When logged in, the "Apply" button reveals the real URL, but the API doesn't expose this.
+
+The user will need to:
+1. Open the Himalayas job page
+2. Click "Apply" to get the real company job URL
+3. Apply on the company's site
+
+This is by design - Himalayas wants to track applications.
+
+**Rate Limiting:**
+- 1.5 second delay between API requests
+- Automatic retry on 429 with 5 second backoff
+
+**Terms of Service Note:**
+
+Himalayas API terms prohibit submitting to Google Jobs, LinkedIn, or Jooble. Using for personal job search is acceptable.
+
+---
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
