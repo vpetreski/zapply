@@ -1,0 +1,656 @@
+# Scraper System Documentation
+
+## Architecture Overview
+
+Zapply uses a **registry-based multi-scraper architecture** that supports:
+- Multiple job sources running in **parallel** via `asyncio.gather()`
+- Per-source logging and statistics
+- Database-driven configuration (enable/disable, priority, settings)
+- **Two-level deduplication**: same-source (`source_id`) + cross-source (`resolved_url`)
+
+### Key Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `ScraperRegistry` | `app/scraper/registry.py` | Central registry for all scrapers |
+| `BaseScraper` | `app/scraper/base.py` | Base class with common interface |
+| `source_service` | `app/services/source_service.py` | Source CRUD and credential management |
+| `scraper_service` | `app/services/scraper_service.py` | Orchestrates scraping runs |
+| `ScraperSource` model | `app/models.py` | Database config for each source |
+| `SourceRun` model | `app/models.py` | Per-source execution tracking |
+
+### Data Flow
+
+```
+Run triggered (manual/scheduled)
+    |
+    +-> PHASE 1: PARALLEL SCRAPING (asyncio.gather)
+    |   |
+    |   +-> Get enabled sources from DB
+    |   |
+    |   +-> For each source IN PARALLEL:
+    |   |       +-> Create SourceRun record
+    |   |       +-> Get credentials from env vars
+    |   |       +-> Instantiate scraper via registry
+    |   |       +-> Execute scrape (browser automation)
+    |   |       +-> Return ScrapeResult with job data (NOT saved yet)
+    |   |
+    |   +-> Wait for all sources to complete
+    |
+    +-> PHASE 2: SEQUENTIAL SAVE (deduplication)
+    |   |
+    |   +-> For each ScrapeResult IN ORDER:
+    |   |       +-> Check same-source dedup (source_id)
+    |   |       +-> Check cross-source dedup (resolved_url)
+    |   |       +-> Save new jobs to database
+    |   |       +-> Update SourceRun stats
+    |
+    +-> PHASE 3: AI MATCHING
+    |   |
+    |   +-> Match new jobs against user profile
+    |
+    +-> Aggregate stats into parent Run
+```
+
+### Database Tables
+
+**`scraper_sources`** - Configuration per source:
+- `name`: Unique identifier (e.g., `working_nomads`)
+- `label`: Display name (e.g., `Working Nomads`)
+- `enabled`: Whether to run this source
+- `priority`: Lower runs first (100 = default)
+- `credentials_env_prefix`: Prefix for env vars (e.g., `WORKING_NOMADS`)
+- `settings`: JSON with source-specific config
+
+**`source_runs`** - Per-source execution within a Run:
+- `run_id`: Parent run
+- `source_name`: Which source
+- `status`: pending/running/completed/failed/skipped
+- `jobs_found`, `jobs_new`, `jobs_duplicate`, `jobs_failed`
+- `logs`: Per-source log entries
+
+### Credential Management
+
+Credentials are stored in environment variables, not the database.
+
+For a source with `credentials_env_prefix = "WORKING_NOMADS"`, the system looks for:
+- `WORKING_NOMADS_USERNAME`
+- `WORKING_NOMADS_PASSWORD`
+- `WORKING_NOMADS_API_KEY` (optional)
+
+The Admin UI shows which credentials are configured (green) or missing (red).
+
+---
+
+## Parallelization Strategy
+
+### Why Parallel Scraping?
+
+When multiple scrapers are enabled, they run **concurrently** using `asyncio.gather()`:
+
+```python
+scrape_tasks = [scrape_source_parallel(...) for source in sources]
+results = await asyncio.gather(*scrape_tasks, return_exceptions=True)
+```
+
+**Benefits:**
+- **Speed**: 3 sources scraping 30 jobs each takes ~same time as 1 source
+- **Isolation**: One source failing doesn't stop others
+- **Resource efficiency**: Browser automation waits are overlapped
+
+**Implementation Details:**
+- Each parallel task gets its own database session (`async_session_maker()`)
+- Job data is returned in memory, not saved during scrape
+- `ScrapeResult` dataclass holds: source info, job data list, stats, errors
+
+### Why Sequential Saving?
+
+Deduplication **must** happen sequentially to ensure correctness:
+
+```python
+# This runs AFTER all parallel scrapes complete
+for result in scrape_results:
+    for job in result.jobs_data:
+        if job.resolved_url in seen_urls:
+            # Cross-source duplicate!
+            continue
+        save_job(job)
+        seen_urls.add(job.resolved_url)
+```
+
+**Why not parallel?**
+- Race condition: Two sources might try to save the same job simultaneously
+- First-wins semantics: We want deterministic behavior (first source by priority wins)
+- Correctness > Speed: Saving is fast, deduplication logic is critical
+
+---
+
+## Deduplication Strategy
+
+### Two-Level Deduplication
+
+Jobs are deduplicated at two levels:
+
+| Level | Field | Purpose | When |
+|-------|-------|---------|------|
+| **Same-source** | `source_id` | Prevent re-scraping same job from same source | During scrape |
+| **Cross-source** | `resolved_url` | Prevent duplicate jobs across different sources | During save |
+
+### Same-Source Deduplication
+
+Each scraper has a unique ID for jobs within that source:
+- Working Nomads: Job slug from URL (e.g., `senior-python-developer-acme-corp`)
+- Other sources: Job ID, URL hash, or similar unique identifier
+
+```python
+# Before scraping, fetch existing source_ids for this source
+existing_slugs = get_existing_source_ids(source_name)
+
+# During scrape, skip already-seen jobs
+if job_slug in existing_slugs:
+    continue  # Already scraped this job before
+```
+
+**Result:** Each source only scrapes new jobs, even across multiple runs.
+
+### Cross-Source Deduplication
+
+Many job aggregators list the same job. We use `resolved_url` to detect these.
+
+> **Note:** Cross-source dedup only works for sources that can resolve the actual job URL
+> (e.g., Working Nomads). Sources like WWR that only provide their own page URL due to
+> Cloudflare restrictions cannot participate in cross-source deduplication.
+
+**The Problem:**
+```
+Working Nomads: https://workingnomads.com/j/abc123 → redirects to → https://company.com/careers/job-456
+RemoteOK:       https://remoteok.com/jobs/xyz789 → redirects to → https://company.com/careers/job-456
+```
+
+Both point to the same actual job posting!
+
+**The Solution:**
+1. During scraping, resolve redirect URLs to get the final destination
+2. Store `resolved_url` in the jobs table
+3. During save, check if `resolved_url` already exists
+
+```python
+# Track URLs seen in this batch AND in database
+seen_urls = get_all_resolved_urls_from_db()
+
+for job in jobs_to_save:
+    if job.resolved_url in seen_urls:
+        stats.duplicate += 1
+        continue
+
+    save_job(job)
+    seen_urls.add(job.resolved_url)
+    stats.new += 1
+```
+
+**First Source Wins:** If two sources have the same job, the source with lower priority number (runs first in the save phase) keeps the job.
+
+### How Duplicates Are Marked
+
+Jobs are **not** marked as duplicates in the database - they're simply **not saved**:
+
+| Stat | Meaning |
+|------|---------|
+| `jobs_found` | Total jobs scraped from source |
+| `jobs_new` | Jobs saved to database (passed dedup) |
+| `jobs_duplicate` | Jobs skipped (same-source OR cross-source duplicate) |
+| `jobs_failed` | Jobs that failed to save (error) |
+
+The `duplicate` count is shown in:
+- Run detail modal (per-source breakdown)
+- Source run stats
+- Console logs during scraping
+
+### Database Schema for Deduplication
+
+```sql
+-- jobs table
+CREATE TABLE jobs (
+    id SERIAL PRIMARY KEY,
+    source VARCHAR NOT NULL,           -- e.g., "working_nomads"
+    source_id VARCHAR NOT NULL,        -- unique within source
+    url VARCHAR NOT NULL,              -- original URL from source
+    resolved_url VARCHAR,              -- final URL after redirects
+    -- ... other fields
+
+    UNIQUE(source, source_id)          -- same-source dedup constraint
+);
+
+-- Index for cross-source dedup lookups
+CREATE INDEX ix_jobs_resolved_url ON jobs(resolved_url) WHERE resolved_url IS NOT NULL;
+```
+
+---
+
+## Adding a New Scraper
+
+1. **Create scraper file**: `app/scraper/new_source.py`
+   ```python
+   from app.scraper.base import BaseScraper
+   from app.scraper.registry import ScraperRegistry
+
+   @ScraperRegistry.register("new_source")
+   class NewSourceScraper(BaseScraper):
+       SOURCE_NAME = "new_source"
+       SOURCE_LABEL = "New Source"
+       SOURCE_DESCRIPTION = "Description here"
+       REQUIRES_LOGIN = True  # or False
+       REQUIRED_CREDENTIALS = ["username", "password"]  # or ["api_key"]
+
+       async def scrape(self, since_days=1, progress_callback=None, job_limit=0, existing_slugs=None, **kwargs):
+           # Implementation - return list of job dicts
+           pass
+
+       async def login(self):
+           # Login implementation if REQUIRES_LOGIN=True
+           return True
+   ```
+
+2. **Add import** to `app/scraper/__init__.py`:
+   ```python
+   from app.scraper import new_source  # Triggers registration
+   ```
+
+3. **Add migration** to seed database record with default settings
+
+4. **Add env vars** to `.env`:
+   ```
+   NEW_SOURCE_USERNAME=...
+   NEW_SOURCE_PASSWORD=...
+   ```
+
+5. **Restart app** - sources auto-sync on startup, then **enable in Admin UI**
+
+---
+
+## Configured Scrapers
+
+### Working Nomads
+
+| Property | Value |
+|----------|-------|
+| **Name** | `working_nomads` |
+| **File** | `app/scraper/working_nomads.py` |
+| **Type** | Premium (login required) |
+| **Auth** | Email/password |
+
+**Environment Variables:**
+```
+WORKING_NOMADS_USERNAME=your_email@example.com
+WORKING_NOMADS_PASSWORD=your_password
+```
+
+**How it works:**
+1. Launches headless Chromium via Playwright
+2. Logs in at `https://www.workingnomads.com/users/sign_in`
+3. Navigates to jobs page with filters
+4. Scrapes job listings via DOM parsing
+5. For each job, extracts: title, company, description, tags, URL
+6. Resolves redirect URLs to get actual job page (for deduplication)
+
+**Default Settings** (stored in `scraper_sources.settings`):
+```json
+{
+  "category": "development",
+  "location": "anywhere,colombia",
+  "posted_days": 7
+}
+```
+
+**Filter Options:**
+
+| Filter | Options | Notes |
+|--------|---------|-------|
+| `category` | `development`, `design`, `marketing`, etc. | Job category |
+| `location` | `anywhere`, `colombia`, `usa`, etc. | Comma-separated |
+| `posted_days` | `1`, `7`, `14`, `30` | Jobs posted within N days |
+
+**URL Pattern:**
+```
+https://www.workingnomads.com/jobs?category=development&location=anywhere,colombia&postedDate=7
+```
+
+**Deduplication:**
+- Within source: `source_id` (Working Nomads job ID)
+- Cross-source: `resolved_url` (actual job posting URL after redirect)
+
+**Rate Limiting:**
+- 1-2 second delays between page loads
+- Respects `networkidle` state before scraping
+
+---
+
+### We Work Remotely
+
+| Property | Value |
+|----------|-------|
+| **Name** | `we_work_remotely` |
+| **File** | `app/scraper/weworkremotely.py` |
+| **Type** | RSS-based (no browser, no login needed) |
+| **Auth** | None (public RSS feeds) |
+
+**Environment Variables:** None required
+
+**How it works:**
+1. Fetches job listings from RSS feeds (no Cloudflare, fast)
+2. Parses RSS XML to extract: title, company, region, description, skills
+3. Filters by region (`Anywhere in the World`, `Latin America Only`)
+4. Filters by post date (default: last 7 days)
+5. Returns WWR job page URLs
+
+**RSS Feeds:**
+| Category | URL |
+|----------|-----|
+| Backend | `https://weworkremotely.com/categories/remote-back-end-programming-jobs.rss` |
+| Fullstack | `https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss` |
+
+**Default Settings** (stored in `scraper_sources.settings`):
+```json
+{
+  "categories": ["backend", "fullstack"],
+  "posted_days": 7
+}
+```
+
+**Region Filtering:**
+
+Jobs are only included if region matches:
+- `Anywhere in the World`
+- `Latin America Only`
+
+Jobs with other regions (e.g., `USA Only`) are skipped.
+
+**Deduplication:**
+- Within source: `source_id` (job slug from URL, e.g., `company-job-title`) ✅
+- Cross-source: **Not available** ❌
+
+**Why no cross-source dedup?**
+
+WWR uses Cloudflare protection that blocks headless browsers. We can't programmatically:
+- Login to Pro account
+- Access job detail pages
+- Extract the real Apply URL (which would be used for cross-source dedup)
+
+This means if the same job appears on both Working Nomads and WWR, it will be stored twice.
+This is acceptable because:
+- Job overlap between sources is relatively low
+- The Matcher will evaluate both - same result either way
+- Manual review during matching catches obvious duplicates
+- Low job volume makes this a minor inconvenience
+
+**Manual Application:**
+
+The URL stored is the WWR job page. To apply:
+1. Click "View Job" to open WWR job page
+2. Click "Apply" button on WWR (requires Pro account to see real URL)
+3. Apply on company's actual job page
+
+---
+
+### Remotive
+
+| Property | Value |
+|----------|-------|
+| **Name** | `remotive` |
+| **File** | `app/scraper/remotive.py` |
+| **Type** | Premium (login required) |
+| **Auth** | Email/password |
+
+**Environment Variables:**
+```
+REMOTIVE_USERNAME=your_email@example.com
+REMOTIVE_PASSWORD=your_password
+```
+
+**How it works:**
+1. Launches headless Chromium via Playwright
+2. Logs in at `https://remotive.com/web/login`
+3. Navigates to Software Development category with location filters
+4. Clicks "More Jobs" button until jobs older than 2 weeks appear
+5. Extracts job slugs from the listing page
+6. Visits each job detail page to scrape: title, company, description, location, apply URL
+7. Resolves apply URLs to get actual job page (for deduplication)
+
+**Default Settings** (stored in `scraper_sources.settings`):
+```json
+{
+  "locations": ["Worldwide", "Latin America (LATAM)", "Colombia"],
+  "posted_days": 7
+}
+```
+
+**Title Format:**
+
+Remotive uses a specific title format: `[Hiring] Job Title @CompanyName`
+- The `[Hiring]` prefix is removed
+- Company name is extracted from after the `@` symbol
+
+**Location Filter Options:**
+
+| Location | URL Parameter |
+|----------|---------------|
+| Worldwide | `Worldwide` |
+| Latin America | `Latin America (LATAM)` |
+| Colombia | `Colombia` |
+| North America | `North America` |
+| Europe | `Europe` |
+
+**URL Pattern:**
+```
+https://remotive.com/remote-jobs/software-development?location=Worldwide,Latin+America+%28LATAM%29,Colombia
+```
+
+**Date Filtering Logic:**
+
+Remotive doesn't have a date filter API parameter. Instead, the scraper filters jobs client-side based on the relative date text displayed on each job card:
+
+1. **Page structure:** Featured/sponsored jobs appear first (may show old dates like "4wks ago"), then "New" jobs, then regular jobs with dates (1d ago, 3d ago, 1wk ago, 2wks ago, etc.)
+
+2. **Filtering approach:**
+   - Featured jobs at the top are always kept (even if they show old dates)
+   - Once the scraper sees a "New" label, it starts filtering
+   - After the "New" section, any job showing "2wks ago" or older is skipped
+   - Jobs showing "New", "1d ago", "3d ago", "1wk ago" are kept
+
+3. **Date markers skipped:** `2wks ago`, `3wks ago`, `4wks ago`, `1mo ago`, `2mo ago`
+
+4. **Result:** Returns only jobs from approximately the last 7 days (~148 jobs typically)
+
+**Deduplication:**
+- Within source: `source_id` (job slug with numeric ID, e.g., `senior-developer-123456`) ✅
+- Cross-source: `resolved_url` (actual job posting URL from Apply button) ✅
+
+**Rate Limiting:**
+- 1-2 second delays between job detail page loads
+- Respects `networkidle` state before scraping
+- Batch delay every 10 jobs
+
+---
+
+### DailyRemote
+
+| Property | Value |
+|----------|-------|
+| **Name** | `dailyremote` |
+| **File** | `app/scraper/dailyremote.py` |
+| **Type** | Premium (token-based activation) |
+| **Auth** | Premium token (no username/password) |
+
+**Environment Variables:**
+```
+DAILYREMOTE_TOKEN=your_premium_token_here
+```
+
+**How it works:**
+1. Launches headless Chromium via Playwright with stealth mode (to bypass Cloudflare)
+2. Activates premium session using token URL
+3. Scrapes 3 location filters sequentially: Worldwide, South America, Colombia
+4. For each location, paginates through jobs until encountering jobs older than 7 days
+5. Collects all job slugs first, then visits each job detail page
+6. Extracts: title, company, description, location, apply URL
+7. Resolves apply URLs to get actual job page (for deduplication)
+
+**Location Filters:**
+
+The scraper runs 3 separate queries **sequentially** (not in parallel) to cover all relevant locations:
+
+| Order | Location | URL Filter |
+|-------|----------|------------|
+| 1 | Worldwide | `location_region=Worldwide` |
+| 2 | South America | `location_region=South%20America` |
+| 3 | Colombia | `location_country=Colombia` |
+
+**Why sequential?** The scraper uses a shared browser context with premium session cookies. Running in parallel would require multiple browser instances and sessions.
+
+**Cross-location deduplication:** A job appearing in multiple location filters is only scraped once. The scraper maintains an `all_seen_slugs` set across all 3 locations - if a slug was already seen in Worldwide, it won't be re-scraped when found in South America or Colombia.
+
+**Expected volumes (per location, page 1 only):**
+- Worldwide: ~30 jobs/page, ~13 pages = ~360 jobs/week
+- South America: ~30 jobs/page (many overlap with Worldwide)
+- Colombia: ~20-30 jobs/page (many overlap with above)
+
+**URL Pattern:**
+```
+https://dailyremote.com/remote-software-development-jobs?page=1&sort_by=time&location_region=Worldwide#main
+```
+
+**Date Filtering Logic:**
+
+Jobs are filtered by date labels on each listing:
+- `23 hours ago` → 0 days (included)
+- `Yesterday` → 1 day (included)
+- `2 Days Ago` → 2 days (included)
+- `1 Week Ago` → 7 days (included)
+- `2 Weeks Ago` → 14 days (excluded - stops scraping)
+
+**Cloudflare Bypass:**
+
+DailyRemote uses Cloudflare protection. The scraper uses `playwright-stealth` to bypass detection:
+- Custom user agent
+- Stealth scripts to hide automation markers
+- Realistic browser context
+
+**Deduplication:**
+- Within source: `source_id` (job slug with numeric ID, e.g., `senior-developer-4374702`) ✅
+- Cross-source: `resolved_url` (actual job posting URL from Apply button) ✅
+- Cross-location: Slugs are tracked across all 3 location filters to avoid duplicates
+
+**Rate Limiting:**
+- 2 second delay after each page load
+- 1 second delay after every 10 job detail scrapes
+- 1 second delay between pagination
+
+---
+
+### Himalayas
+
+| Property | Value |
+|----------|-------|
+| **Name** | `himalayas` |
+| **File** | `app/scraper/himalayas.py` |
+| **Type** | API-based (no browser, no login needed) |
+| **Auth** | None (public API) |
+
+**Environment Variables:** None required
+
+**How it works:**
+1. Fetches job listings from public JSON API (no authentication needed)
+2. Paginates through jobs (20 per request, API maximum)
+3. Filters for software engineering categories: `Developer`, `Data Science`
+4. Filters for Colombia-compatible timezone: UTC-5 must be in `timezoneRestrictions`
+5. Filters for eligible locations:
+   - Empty `locationRestrictions` (worldwide remote)
+   - Explicit "Worldwide" or "Global"
+   - Explicit "LATAM" or "South America" region
+   - Colombia specifically
+   - Rejects jobs restricted to other countries (Brazil, Mexico, US, etc.)
+6. Stops when 50+ consecutive old jobs are encountered
+7. Includes retry logic with exponential backoff for rate limiting
+
+**API Details:**
+
+| Property | Value |
+|----------|-------|
+| **Endpoint** | `https://himalayas.app/jobs/api` |
+| **Pagination** | `?limit=20&offset=N` (max 20 per request) |
+| **Rate Limit** | 429 on excessive requests |
+| **Total Jobs** | ~67,000 (most not relevant) |
+
+**Filter Logic:**
+
+The API doesn't support server-side filtering, so all filtering happens client-side:
+
+1. **Category Filter:**
+   - Job must have `parentCategories` containing: `Developer` or `Data Science`
+   - Excludes: `Research & Development` (too broad, includes clinical roles)
+
+2. **Timezone Filter:**
+   - Job's `timezoneRestrictions` must include `-5` (Colombia's UTC offset)
+   - Empty `timezoneRestrictions` = any timezone allowed (included)
+
+3. **Location Filter:**
+   - Empty `locationRestrictions` = worldwide remote (✅ included)
+   - Contains "Worldwide" or "Global" (✅ included)
+   - Contains "Latin America" or "South America" or "LATAM" region (✅ included)
+   - Colombia specifically (✅ included)
+   - Other specific countries like Brazil, Mexico, US, etc. (❌ excluded)
+
+**Expected Volumes:**
+
+Based on testing with 7-day lookback:
+- ~9-12 eligible jobs per week
+- Breakdown: ~6 Worldwide Remote, ~3 Colombia
+
+**Unique Advantages:**
+
+1. **Timezone filtering**: Only major board with timezone restrictions in API
+2. **No authentication needed**: Public API, no credentials required
+3. **Fast**: Pure API calls, no browser automation
+4. **Curated listings**: Verified companies with detailed profiles
+
+**Deduplication:**
+- Within source: `source_id` (job slug from `guid` URL, e.g., `software-engineer-123456`) ✅
+- Cross-source: **Not available** ❌
+
+**Why no cross-source dedup?**
+
+Himalayas job links (`applicationLink`) point directly to Himalayas pages, not to company job pages. When logged in, the "Apply" button reveals the real URL, but the API doesn't expose this.
+
+The user will need to:
+1. Open the Himalayas job page
+2. Click "Apply" to get the real company job URL
+3. Apply on the company's site
+
+This is by design - Himalayas wants to track applications.
+
+**Rate Limiting:**
+- 1.5 second delay between API requests
+- Automatic retry on 429 with exponential backoff (5s, 10s, 15s)
+- Max 3 retries before failing
+
+**Terms of Service Note:**
+
+Himalayas API terms prohibit submitting to Google Jobs, LinkedIn, or Jooble. Using for personal job search is acceptable.
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sources` | GET | List all sources |
+| `/api/sources/{name}` | GET | Get single source |
+| `/api/sources/{name}` | PATCH | Update source (enable/disable) |
+
+---
+
+## Frontend Features
+
+- **Jobs page**: Filter by source, source label shown on each job
+- **Runs page**: Per-source results with stats (found/new/duplicate)
+- **Admin page**: Simple toggle to enable/disable sources

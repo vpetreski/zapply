@@ -1,0 +1,298 @@
+"""Database models for Zapply."""
+
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Optional
+
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+
+
+def utc_now():
+    """Get current UTC time - helper for SQLAlchemy default."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)  # Returns timezone-naive UTC time for PostgreSQL compatibility
+
+
+class JobStatus(str, Enum):
+    """Job processing status."""
+
+    NEW = "new"
+    MATCHED = "matched"
+    REJECTED = "rejected"
+
+
+class MatchingSource(str, Enum):
+    """How the job was matched (by AI or manually)."""
+
+    AUTO = "auto"
+    MANUAL = "manual"
+
+
+class JobSource(str, Enum):
+    """Job source platforms."""
+
+    WORKING_NOMADS = "working_nomads"
+    WE_WORK_REMOTELY = "we_work_remotely"
+    REMOTIVE = "remotive"
+
+
+class Job(Base):
+    """Job posting from various sources."""
+
+    __tablename__ = "jobs"
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_jobs_source_source_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Source information
+    source: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved_url: Mapped[Optional[str]] = mapped_column(Text, index=True)  # For cross-source dedup
+
+    # Job details
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    company: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    requirements: Mapped[Optional[str]] = mapped_column(Text)
+    location: Mapped[Optional[str]] = mapped_column(Text)
+    salary: Mapped[Optional[str]] = mapped_column(Text)
+    tags: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # Raw data from source
+    raw_data: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # Processing status
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=JobStatus.NEW.value, index=True
+    )
+
+    # Matching information
+    matching_source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=MatchingSource.AUTO.value, index=True
+    )
+    match_reasoning: Mapped[Optional[str]] = mapped_column(Text)
+    match_score: Mapped[Optional[float]] = mapped_column()
+
+    # Application information
+    application_data: Mapped[Optional[dict]] = mapped_column(JSON)
+    application_error: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
+    matched_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    reported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    def __repr__(self) -> str:
+        return f"<Job {self.id}: {self.title} at {self.company} ({self.status})>"
+
+
+class UserProfile(Base):
+    """User profile and preferences."""
+
+    __tablename__ = "user_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # CV information
+    cv_filename: Mapped[Optional[str]] = mapped_column(String(500))
+    cv_text: Mapped[Optional[str]] = mapped_column(Text)  # Extracted text from CV
+
+    # Custom instructions for AI (user's preferences and requirements)
+    custom_instructions: Mapped[Optional[str]] = mapped_column(Text)
+
+    # AI-generated profile data (for matching)
+    skills: Mapped[Optional[list]] = mapped_column(JSON)
+    preferences: Mapped[Optional[dict]] = mapped_column(JSON)
+    ai_generated_summary: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self) -> str:
+        return f"<UserProfile {self.id}>"
+
+
+class ApplicationLog(Base):
+    """Log of application attempts and results."""
+
+    __tablename__ = "application_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    job_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+
+    # Application details
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    screenshots: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # AI interaction
+    ai_prompts: Mapped[Optional[list]] = mapped_column(JSON)
+    ai_responses: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # Timing
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    duration_seconds: Mapped[Optional[float]] = mapped_column()
+
+    def __repr__(self) -> str:
+        return f"<ApplicationLog {self.id}: Job {self.job_id} ({self.status})>"
+
+
+class RunStatus(str, Enum):
+    """Run execution status."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
+class RunPhase(str, Enum):
+    """Phases of a run."""
+
+    SCRAPING = "scraping"
+    MATCHING = "matching"
+    REPORTING = "reporting"
+
+
+class RunTriggerType(str, Enum):
+    """How a run was triggered."""
+
+    MANUAL = "manual"
+    SCHEDULED_DAILY = "scheduled_daily"
+    SCHEDULED_HOURLY = "scheduled_hourly"
+
+
+class Run(Base):
+    """Track each execution run of the automation pipeline."""
+
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Run metadata
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=RunStatus.RUNNING.value, index=True
+    )
+    phase: Mapped[str] = mapped_column(
+        String(20), nullable=False, index=True
+    )
+    trigger_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=RunTriggerType.MANUAL.value, index=True
+    )
+
+    # Statistics and logs
+    stats: Mapped[Optional[dict]] = mapped_column(JSON)  # Phase-specific stats
+    logs: Mapped[Optional[list]] = mapped_column(JSON)  # Log messages with timestamps
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Timing
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, index=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    duration_seconds: Mapped[Optional[float]] = mapped_column()
+
+    def __repr__(self) -> str:
+        return f"<Run {self.id}: {self.phase} ({self.status})>"
+
+
+class AppSettings(Base):
+    """Application settings stored in database."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self) -> str:
+        return f"<AppSettings {self.key}={self.value}>"
+
+
+class ScraperSource(Base):
+    """Scraper source configuration stored in database."""
+
+    __tablename__ = "scraper_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(default=True, index=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    credentials_env_prefix: Mapped[Optional[str]] = mapped_column(String(100))
+    settings: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+    def __repr__(self) -> str:
+        return f"<ScraperSource {self.name} enabled={self.enabled}>"
+
+
+class SourceRunStatus(str, Enum):
+    """Status of a source run within a pipeline run."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class SourceRun(Base):
+    """Track individual source execution within a run."""
+
+    __tablename__ = "source_runs"
+    __table_args__ = (
+        UniqueConstraint("run_id", "source_name", name="uq_source_runs_run_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("runs.id", ondelete="CASCADE", name="fk_source_runs_run_id_runs"),
+        nullable=False,
+        index=True
+    )
+    source_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=SourceRunStatus.RUNNING.value, index=True
+    )
+
+    # Statistics
+    jobs_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    jobs_new: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    jobs_duplicate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    jobs_failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Logs and errors
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    logs: Mapped[Optional[list]] = mapped_column(JSON)
+
+    # Timing
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    duration_seconds: Mapped[Optional[float]] = mapped_column()
+
+    def __repr__(self) -> str:
+        return f"<SourceRun {self.id}: {self.source_name} ({self.status})>"

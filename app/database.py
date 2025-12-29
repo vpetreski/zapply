@@ -1,0 +1,78 @@
+"""Database connection and session management."""
+
+from typing import AsyncGenerator
+
+from sqlalchemy import MetaData
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
+
+from app.config import settings
+from app.utils import log_to_console
+
+# Create async engine with connection pool settings for resilience
+engine = create_async_engine(
+    settings.database_url,
+    echo=settings.debug,
+    future=True,
+    # Connection pool settings for long-running scheduled tasks
+    pool_pre_ping=True,  # Verify connection is alive before using it
+    pool_recycle=1800,  # Recycle connections after 30 minutes
+    pool_size=5,  # Keep 5 connections in pool
+    max_overflow=10,  # Allow up to 10 additional connections
+)
+
+# Create async session factory
+async_session_maker = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+# SQLAlchemy metadata with naming conventions
+convention = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+metadata = MetaData(naming_convention=convention)
+
+
+class Base(DeclarativeBase):
+    """Base class for all database models."""
+
+    metadata = metadata
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Dependency for getting async database sessions."""
+    async with async_session_maker() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception as e:
+            log_to_console(f"❌ Database error: {str(e)}")
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Get a database session for background tasks and scheduler.
+
+    This is a standalone version of get_db() for use outside of FastAPI request context.
+    """
+    async with async_session_maker() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception as e:
+            log_to_console(f"❌ Background database error: {str(e)}")
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

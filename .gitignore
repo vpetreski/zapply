@@ -1,0 +1,97 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment - CRITICAL: Never commit these
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files and utilities
+create_actual_run.py
+create_test_run.py
+fix_run.py
+update_run_time.py
+test_load_more.py
+show_more_test.png
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm/
+
+# Build
+dist/
+build/
+
+# Deployment keys - NEVER commit
+.github-deploy-key
+.github-deploy-key.pub
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+pids/
+*.pid
+*.seed
+
+# Screenshots and temporary files
+*.png
+*.jpg
+*.jpeg
+!frontend/public/*
+
+# Coverage
+.coverage
+htmlcov/
+.nyc_output/
+
+# Local data
+data/

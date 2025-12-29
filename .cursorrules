@@ -1,0 +1,131 @@
+# Cursor Rules for Zapply
+
+## Project Overview
+AI-powered job application automation system. Python 3.12 + FastAPI backend, Vue.js frontend, PostgreSQL database.
+
+## Tech Stack
+- Backend: Python 3.12, FastAPI, SQLAlchemy, Playwright, Anthropic Claude API
+- Frontend: Vue.js 3
+- Database: PostgreSQL
+- Package Manager: uv (NOT pip or poetry)
+- Deployment: Docker, GitHub Actions
+
+## Code Style
+
+### Python
+- Always use type hints for function parameters and return values
+- Use async/await for I/O-bound operations
+- Use Pydantic models for data validation
+- Follow PEP 8 style guide
+- Maximum line length: 100 characters
+- Use descriptive variable names
+
+### FastAPI
+- Use dependency injection for database sessions
+- Return Pydantic response models from endpoints
+- Use proper HTTP status codes
+- Include error handling middleware
+- Document endpoints with docstrings
+
+### Database
+- Use SQLAlchemy 2.0+ syntax (async)
+- Define models with proper relationships
+- Use Alembic for migrations
+- Never hard-code database credentials
+
+### JavaScript/Vue.js
+- Use Vue 3 Composition API
+- Use modern ES6+ features
+- Keep components small and focused
+
+## File Organization
+
+```
+app/
+├── main.py              # FastAPI app entry point
+├── config.py            # Configuration (env vars)
+├── database.py          # DB connection
+├── models.py            # SQLAlchemy models
+├── schemas.py           # Pydantic schemas
+├── routers/             # API routes
+├── services/            # Business logic
+└── scraper/             # Job scrapers
+```
+
+## Package Management
+
+**IMPORTANT**: This project uses `uv`, not pip or poetry.
+
+```bash
+# Add dependency
+uv add package-name
+
+# Install all dependencies
+uv sync
+
+# Run command in uv environment
+uv run uvicorn app.main:app
+```
+
+Never suggest `pip install` or `poetry add`. Always use `uv`.
+
+## Environment Variables
+
+Never hard-code sensitive data. Use `.env` file:
+
+```bash
+DATABASE_URL=postgresql://...
+ANTHROPIC_API_KEY=...
+ADMIN_EMAIL=...
+ADMIN_PASSWORD=...
+JWT_SECRET_KEY=...
+```
+
+Load with `pydantic-settings`.
+
+## AI Integration
+
+### Claude API Usage
+- Use for Matcher (intelligent job filtering)
+- Be cost-efficient - don't make unnecessary calls
+- Handle rate limits gracefully
+
+### When NOT to use AI
+- Scraping (use Playwright only)
+- Simple data transformation
+- Basic filtering (use business logic)
+
+## Testing
+
+- pytest for unit tests
+- pytest-asyncio for async tests
+- Test with real job data
+
+## Docker
+
+### Development
+```bash
+docker compose up -d postgres  # DB only
+uv run uvicorn app.main:app --reload  # Run backend locally
+```
+
+### Production
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+## Git Workflow
+
+- Commit frequently with clear messages
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`
+- Don't commit `.env`, secrets, or local data
+
+## When Reviewing Code
+
+Look for:
+- Missing type hints
+- Hard-coded credentials
+- Missing error handling
+- Inefficient database queries
+- Unnecessary AI API calls
+- Over-engineering
