@@ -6,8 +6,8 @@ set -e
 
 echo "🚀 Starting Zapply deployment..."
 
-# Configuration - CUSTOMIZE THESE FOR YOUR ENVIRONMENT
-DEPLOY_DIR="${DEPLOY_DIR:-/path/to/zapply}"
+# Configuration
+DEPLOY_DIR="${DEPLOY_DIR:-/volume1/docker/zapply}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 GITHUB_REPO_OWNER="${GITHUB_REPOSITORY_OWNER:-your_github_username}"
 
