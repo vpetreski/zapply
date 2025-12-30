@@ -360,12 +360,23 @@ async def save_jobs_and_finalize_source_runs(
 
     # Track resolved URLs we've seen in this batch for cross-source dedup
     seen_resolved_urls: set[str] = set()
+    # Track title+company pairs to catch spam duplicates (same job posted multiple times)
+    seen_title_company: set[tuple[str, str]] = set()
 
     # Get all existing resolved URLs from database
     existing_urls_result = await db.execute(
         select(Job.resolved_url).where(Job.resolved_url.isnot(None))
     )
     existing_resolved_urls = set(row[0] for row in existing_urls_result.fetchall())
+
+    # Get existing title+company pairs (for spam dedup)
+    existing_title_company_result = await db.execute(
+        select(Job.title, Job.company)
+    )
+    existing_title_company = set(
+        (row[0].lower().strip(), row[1].lower().strip())
+        for row in existing_title_company_result.fetchall()
+    )
 
     for result in scrape_results:
         if not result.success:
@@ -412,6 +423,17 @@ async def save_jobs_and_finalize_source_runs(
                         continue
                     seen_resolved_urls.add(resolved_url)
 
+                # Check title+company deduplication (catches spam duplicates)
+                title_company_key = (
+                    job_data["title"].lower().strip(),
+                    job_data["company"].lower().strip()
+                )
+                if title_company_key in existing_title_company or title_company_key in seen_title_company:
+                    log_to_console(f"  ⏭️ Spam duplicate (same title+company): {job_data['title']}")
+                    jobs_duplicate += 1
+                    continue
+                seen_title_company.add(title_company_key)
+
                 # Create new job
                 job = Job(
                     source=job_data["source"],
@@ -430,6 +452,7 @@ async def save_jobs_and_finalize_source_runs(
                 db.add(job)
                 jobs_new += 1
                 existing_source_ids.add(source_id)
+                existing_title_company.add(title_company_key)
                 if resolved_url:
                     existing_resolved_urls.add(resolved_url)
 
