@@ -334,6 +334,21 @@ class DailyRemoteScraper(BaseScraper):
             # Company - look for company name element
             # DailyRemote uses /remote-company/company-name links
             company = "Unknown"
+
+            # Invalid company names (social media, generic terms)
+            invalid_company_names = [
+                "linkedin", "facebook", "twitter", "instagram", "youtube",
+                "share", "follow", "connect", "view more", "apply now",
+                "unknown", "remote", "worldwide", "global"
+            ]
+
+            def is_valid_company(text: str) -> bool:
+                """Check if text is a valid company name."""
+                if not text or len(text) > 100:
+                    return False
+                text_lower = text.lower().strip()
+                return not any(invalid in text_lower for invalid in invalid_company_names)
+
             company_selectors = [
                 'a[href*="/remote-company/"]',  # Most reliable - company profile link
                 'h2 a[href*="/remote-company/"]',  # Company name in h2 with link
@@ -342,8 +357,7 @@ class DailyRemoteScraper(BaseScraper):
                 elem = await self.page.query_selector(selector)
                 if elem:
                     text = (await elem.inner_text()).strip()
-                    # Skip if it's a "View More Jobs" type link
-                    if text and len(text) < 100 and "view more" not in text.lower():
+                    if is_valid_company(text):
                         company = text
                         break
 
@@ -355,7 +369,7 @@ class DailyRemoteScraper(BaseScraper):
                     # Make sure it's not a section header like "About us", "The role", etc.
                     section_headers = ["about", "role", "what you", "must have", "requirements",
                                        "responsibilities", "benefits", "similar", "apply"]
-                    if text and len(text) < 100 and not any(h in text.lower() for h in section_headers):
+                    if is_valid_company(text) and not any(h in text.lower() for h in section_headers):
                         company = text
 
             # Description - main content area
