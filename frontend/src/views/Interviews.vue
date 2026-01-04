@@ -36,11 +36,10 @@
             <h3 class="interview-title">{{ interview.title }}</h3>
             <span :class="['badge', `badge-${interview.status}`]">{{ interview.status }}</span>
           </div>
-          <div
+          <p
             v-if="interview.description"
             class="interview-description"
-            v-html="truncateHtml(interview.description, 200)"
-          ></div>
+          >{{ stripHtmlAndTruncate(interview.description, 200) }}</p>
           <div class="interview-footer">
             <span class="text-muted timestamp">Updated: {{ formatTimestamp(interview.updated_at) }}</span>
             <div class="cv-indicator">
@@ -410,21 +409,21 @@ const downloadCv = async (interviewId) => {
   }
 }
 
-const truncateHtml = (html, maxLength) => {
+const stripHtmlAndTruncate = (html, maxLength) => {
   if (!html) return ''
 
-  // Create a temporary element to parse HTML
+  // Create a temporary element to parse HTML and extract plain text
   const temp = document.createElement('div')
   temp.innerHTML = html
 
-  // Get text content
+  // Get text content (safe - no HTML returned)
   const text = temp.textContent || temp.innerText || ''
 
   if (text.length <= maxLength) {
-    return html
+    return text
   }
 
-  // Truncate text and return as plain text with ellipsis
+  // Truncate and add ellipsis
   return text.substring(0, maxLength) + '...'
 }
 
@@ -550,11 +549,6 @@ onUnmounted(() => {
   line-height: 1.6;
   margin-bottom: 1rem;
   font-size: 0.9rem;
-}
-
-.interview-description :deep(a) {
-  color: var(--primary);
-  text-decoration: underline;
 }
 
 .interview-footer {

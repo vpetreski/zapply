@@ -21,6 +21,9 @@ from app.utils import log_to_console
 
 router = APIRouter()
 
+# Valid status values for interviews
+VALID_STATUSES = frozenset(s.value for s in InterviewStatus)
+
 
 def interview_to_response(interview: Interview) -> InterviewResponse:
     """Convert Interview model to response schema with has_cv computed."""
@@ -146,8 +149,8 @@ async def update_interview(
     if update_data.description is not None:
         interview.description = update_data.description
     if update_data.status is not None:
-        if update_data.status not in [s.value for s in InterviewStatus]:
-            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {[s.value for s in InterviewStatus]}")
+        if update_data.status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {list(VALID_STATUSES)}")
         interview.status = update_data.status
 
     await db.commit()
