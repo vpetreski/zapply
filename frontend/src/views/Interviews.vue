@@ -355,14 +355,14 @@ const saveInterview = async () => {
       await axios.delete(`/api/interviews/${interview.id}/cv`)
     }
 
-    // Refresh the list
+    // Success - reset saving state and close modal
+    saving.value = false
     resetAndFetch()
     closeModal()
   } catch (error) {
     console.error('Failed to save interview:', error)
     const message = error.response?.data?.detail || error.message || 'Unknown error'
     alert(`Failed to save interview: ${message}`)
-  } finally {
     saving.value = false
   }
 }
@@ -378,13 +378,14 @@ const deleteInterview = async () => {
 
   try {
     await axios.delete(`/api/interviews/${currentInterview.value.id}`)
+    // Success - reset saving state before closing modal
+    saving.value = false
     showDeleteConfirm.value = false
     closeModal()
     resetAndFetch()
   } catch (error) {
     console.error('Failed to delete interview:', error)
     alert('Failed to delete interview. Please try again.')
-  } finally {
     saving.value = false
   }
 }
