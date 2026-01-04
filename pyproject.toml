@@ -27,6 +27,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
     "defusedxml>=0.7.1",
+    "bleach>=6.3.0",
 ]
 
 [project.optional-dependencies]

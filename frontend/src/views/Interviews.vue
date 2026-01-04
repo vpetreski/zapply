@@ -433,18 +433,17 @@ const formatTimestamp = (timestamp) => {
   if (!timestamp) return ''
 
   const isoString = timestamp.includes('Z') ? timestamp : timestamp + 'Z'
-  const utcDate = new Date(isoString)
+  const date = new Date(isoString)
 
-  // Subtract 5 hours for Colombian time (UTC-5)
-  const colombianDate = new Date(utcDate.getTime() - (5 * 60 * 60 * 1000))
-
-  const year = colombianDate.getUTCFullYear()
-  const month = String(colombianDate.getUTCMonth() + 1).padStart(2, '0')
-  const day = String(colombianDate.getUTCDate()).padStart(2, '0')
-  const hours = String(colombianDate.getUTCHours()).padStart(2, '0')
-  const minutes = String(colombianDate.getUTCMinutes()).padStart(2, '0')
-
-  return `${year}-${month}-${day} ${hours}:${minutes}`
+  // Use browser's local timezone with Intl.DateTimeFormat
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(date).replace(',', '')
 }
 
 onMounted(() => {

@@ -1,8 +1,10 @@
 """Interview management endpoints."""
 
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Annotated, Optional
 
+import bleach
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
@@ -23,6 +25,17 @@ router = APIRouter()
 
 # Valid status values for interviews
 VALID_STATUSES = frozenset(s.value for s in InterviewStatus)
+
+# HTML sanitization settings - allow only safe tags from TipTap editor
+ALLOWED_TAGS = ["p", "h2", "h3", "ul", "ol", "li", "a", "strong", "br"]
+ALLOWED_ATTRS = {"a": ["href", "target", "rel"]}
+
+
+def sanitize_html(html: Optional[str]) -> Optional[str]:
+    """Sanitize HTML content to prevent XSS attacks."""
+    if not html:
+        return html
+    return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
 
 
 def interview_to_response(interview: Interview) -> InterviewResponse:
@@ -54,8 +67,10 @@ async def list_interviews(
     # Build query
     query = select(Interview)
 
-    # Filter by status
+    # Filter by status (with validation)
     if status:
+        if status not in VALID_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {list(VALID_STATUSES)}")
         query = query.filter(Interview.status == status)
 
     # Get total count
@@ -114,7 +129,7 @@ async def create_interview(
 
     interview = Interview(
         title=interview_data.title,
-        description=interview_data.description,
+        description=sanitize_html(interview_data.description),
         status=InterviewStatus.ACTIVE.value,
     )
 
@@ -147,7 +162,7 @@ async def update_interview(
     if update_data.title is not None:
         interview.title = update_data.title
     if update_data.description is not None:
-        interview.description = update_data.description
+        interview.description = sanitize_html(update_data.description)
     if update_data.status is not None:
         if update_data.status not in VALID_STATUSES:
             raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {list(VALID_STATUSES)}")
@@ -259,9 +274,10 @@ async def upload_cv(
         log_to_console(f"❌ Interview {interview_id} not found")
         raise HTTPException(status_code=404, detail="Interview not found")
 
-    # Update interview
+    # Update interview with explicit updated_at (SQLAlchemy onupdate may not fire for binary)
     interview.cv_data = cv_data
     interview.cv_filename = file.filename
+    interview.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
 
@@ -289,8 +305,10 @@ async def remove_cv(
         log_to_console(f"❌ No CV attached to interview {interview_id}")
         raise HTTPException(status_code=404, detail="No CV attached to this interview")
 
+    # Update with explicit updated_at (SQLAlchemy onupdate may not fire for binary)
     interview.cv_data = None
     interview.cv_filename = None
+    interview.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
 
