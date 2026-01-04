@@ -391,23 +391,28 @@ const deleteInterview = async () => {
 }
 
 const downloadCv = async (interviewId) => {
+  let url = null
   try {
     const response = await axios.get(`/api/interviews/${interviewId}/cv`, {
       responseType: 'blob'
     })
 
     // Create download link
-    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
     const link = document.createElement('a')
     link.href = url
     link.setAttribute('download', 'Resume-Vanja-Petreski.pdf')
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
   } catch (error) {
     console.error('Failed to download CV:', error)
     alert('Failed to download CV. Please try again.')
+  } finally {
+    // Always revoke blob URL to prevent memory leak
+    if (url) {
+      window.URL.revokeObjectURL(url)
+    }
   }
 }
 

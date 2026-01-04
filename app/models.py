@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -309,6 +309,10 @@ class Interview(Base):
     """Interview process tracking."""
 
     __tablename__ = "interviews"
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'closed')", name="ck_interview_status"),
+        Index("ix_interviews_status_updated", "status", "updated_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
