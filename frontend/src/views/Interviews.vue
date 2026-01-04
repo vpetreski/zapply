@@ -49,7 +49,7 @@
                 class="cv-link"
                 title="Download CV"
               >
-                📄 Download CV
+                <svg class="pdf-icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM8.5 14H10v2H8.5v-2zm0-3H10v2H8.5v-2zm3 0h2v5h-2v-5zm3 0h2v5h-2v-5z"/></svg> Download CV
               </a>
               <span v-else class="text-muted">No custom CV</span>
             </div>
@@ -112,11 +112,11 @@
                 class="file-input"
               />
               <div v-if="currentInterview?.has_cv && !selectedCvFile && !cvRemoved" class="cv-info">
-                <span class="cv-filename">📄 {{ currentInterview.cv_filename || 'CV attached' }}</span>
+                <span class="cv-filename"><svg class="pdf-icon" viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM8.5 14H10v2H8.5v-2zm0-3H10v2H8.5v-2zm3 0h2v5h-2v-5zm3 0h2v5h-2v-5z"/></svg> {{ currentInterview.cv_filename || 'CV attached' }}</span>
                 <button type="button" @click="markCvForRemoval" class="btn btn-sm btn-danger">Remove</button>
               </div>
               <div v-else-if="selectedCvFile" class="cv-info">
-                <span class="cv-filename">📄 {{ selectedCvFile.name }}</span>
+                <span class="cv-filename"><svg class="pdf-icon" viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM8.5 14H10v2H8.5v-2zm0-3H10v2H8.5v-2zm3 0h2v5h-2v-5zm3 0h2v5h-2v-5z"/></svg> {{ selectedCvFile.name }}</span>
                 <button type="button" @click="clearSelectedCv" class="btn btn-sm btn-secondary">Clear</button>
               </div>
               <div v-else-if="cvRemoved" class="cv-info cv-removed">
@@ -853,5 +853,11 @@ onUnmounted(() => {
   .modal-footer-right .btn {
     width: 100%;
   }
+}
+
+.pdf-icon {
+  color: #e74c3c;
+  vertical-align: middle;
+  margin-right: 4px;
 }
 </style>
