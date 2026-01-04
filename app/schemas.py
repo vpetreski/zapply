@@ -206,3 +206,52 @@ class RunListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# =============================================================================
+# Interview Schemas
+# =============================================================================
+
+
+class InterviewBase(BaseModel):
+    """Base interview schema."""
+
+    title: str
+    description: Optional[str] = None
+
+
+class InterviewCreate(InterviewBase):
+    """Schema for creating an interview."""
+
+    pass
+
+
+class InterviewUpdate(BaseModel):
+    """Schema for updating an interview."""
+
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+
+class InterviewResponse(InterviewBase):
+    """Schema for interview response."""
+
+    id: int
+    status: str
+    cv_filename: Optional[str] = None
+    has_cv: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class InterviewListResponse(BaseModel):
+    """Schema for paginated interview list."""
+
+    interviews: list[InterviewResponse]
+    total: int
+    page: int
+    page_size: int
