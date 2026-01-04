@@ -494,7 +494,7 @@ onUnmounted(() => {
 }
 
 .filter-select {
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 2.25rem 0.5rem 1rem;
   background-color: var(--bg-darker);
   border: 1px solid var(--border);
   border-radius: 0.375rem;
@@ -502,6 +502,10 @@ onUnmounted(() => {
   font-size: 0.875rem;
   cursor: pointer;
   transition: border-color 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
 }
 
 .filter-select:hover {
