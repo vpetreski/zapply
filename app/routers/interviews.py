@@ -1,6 +1,5 @@
 """Interview management endpoints."""
 
-from datetime import datetime, timezone
 from io import BytesIO
 from typing import Annotated, Optional
 
@@ -11,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Interview, InterviewStatus
+from app.models import Interview, InterviewStatus, utc_now
 from app.routers.auth import User, get_current_user
 from app.schemas import (
     InterviewCreate,
@@ -277,7 +276,7 @@ async def upload_cv(
     # Update interview with explicit updated_at (SQLAlchemy onupdate may not fire for binary)
     interview.cv_data = cv_data
     interview.cv_filename = file.filename
-    interview.updated_at = datetime.now(timezone.utc)
+    interview.updated_at = utc_now()
 
     await db.commit()
 
@@ -308,7 +307,7 @@ async def remove_cv(
     # Update with explicit updated_at (SQLAlchemy onupdate may not fire for binary)
     interview.cv_data = None
     interview.cv_filename = None
-    interview.updated_at = datetime.now(timezone.utc)
+    interview.updated_at = utc_now()
 
     await db.commit()
 

@@ -182,4 +182,35 @@ test.describe('Interviews Feature', () => {
     // Verify the interview was created
     await expect(page.locator(`.interview-card:has-text("${richTextTitle}")`)).toBeVisible();
   });
+
+  test('should upload CV when creating interview', async ({ page }) => {
+    // Click New Interview button
+    await page.click('button:has-text("New Interview")');
+    await expect(page.locator('.interview-modal')).toBeVisible();
+
+    // Fill in title
+    const cvTestTitle = `CV Test ${Date.now()}`;
+    await page.fill('#interview-title', cvTestTitle);
+
+    // Fill in description
+    await page.click('.editor-content');
+    await page.keyboard.type('Interview with custom CV attached.');
+
+    // Upload CV
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles('./tests/fixtures/test.pdf');
+
+    // Verify file is selected (button text or indicator changes)
+    await expect(page.locator('.cv-upload')).toContainText('test.pdf');
+
+    // Click Create button
+    await page.click('button:has-text("Create")');
+
+    // Wait for modal to close
+    await expect(page.locator('.interview-modal')).not.toBeVisible({ timeout: 5000 });
+
+    // Verify the interview appears in the list with CV indicator (Download CV link)
+    await expect(page.locator(`.interview-card:has-text("${cvTestTitle}")`)).toBeVisible();
+    await expect(page.locator(`.interview-card:has-text("${cvTestTitle}") .cv-link`)).toBeVisible();
+  });
 });
