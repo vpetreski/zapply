@@ -1,6 +1,8 @@
 """Interview management endpoints."""
 
+import re
 from io import BytesIO
+from pathlib import Path
 from typing import Annotated, Optional
 
 import bleach
@@ -28,13 +30,35 @@ VALID_STATUSES = frozenset(s.value for s in InterviewStatus)
 # HTML sanitization settings - allow only safe tags from TipTap editor
 ALLOWED_TAGS = ["p", "h2", "h3", "ul", "ol", "li", "a", "strong", "br"]
 ALLOWED_ATTRS = {"a": ["href", "target", "rel"]}
+ALLOWED_PROTOCOLS = ["http", "https", "mailto"]  # Prevent javascript: URLs
 
 
 def sanitize_html(html: Optional[str]) -> Optional[str]:
     """Sanitize HTML content to prevent XSS attacks."""
     if not html:
         return html
-    return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
+    return bleach.clean(
+        html,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRS,
+        protocols=ALLOWED_PROTOCOLS,
+        strip=True,
+    )
+
+
+def sanitize_filename(filename: Optional[str]) -> str:
+    """Sanitize filename to prevent path traversal and invalid characters."""
+    if not filename:
+        return "resume.pdf"
+    # Get just the filename, no path components
+    safe_name = Path(filename).name
+    # Remove any non-alphanumeric chars except . - _
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", safe_name)
+    # Limit length and ensure it has .pdf extension
+    safe_name = safe_name[:250]
+    if not safe_name.lower().endswith(".pdf"):
+        safe_name += ".pdf"
+    return safe_name or "resume.pdf"
 
 
 def interview_to_response(interview: Interview) -> InterviewResponse:
@@ -72,8 +96,10 @@ async def list_interviews(
             raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {list(VALID_STATUSES)}")
         query = query.filter(Interview.status == status)
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
+    # Get total count (more efficient than subquery)
+    count_query = select(func.count(Interview.id))
+    if status:
+        count_query = count_query.filter(Interview.status == status)
     total = (await db.execute(count_query)).scalar_one()
 
     # Order by updated_at descending (most recently updated first)
@@ -222,12 +248,14 @@ async def download_cv(
         log_to_console(f"❌ No CV attached to interview {interview_id}")
         raise HTTPException(status_code=404, detail="No CV attached to this interview")
 
-    log_to_console(f"✅ Downloading CV for interview {interview_id}")
+    # Use stored filename or default
+    download_filename = interview.cv_filename or "Resume-Vanja-Petreski.pdf"
+    log_to_console(f"✅ Downloading CV for interview {interview_id}: {download_filename}")
     return StreamingResponse(
         BytesIO(interview.cv_data),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": 'attachment; filename="Resume-Vanja-Petreski.pdf"'
+            "Content-Disposition": f'attachment; filename="{download_filename}"'
         },
     )
 
@@ -274,14 +302,15 @@ async def upload_cv(
         raise HTTPException(status_code=404, detail="Interview not found")
 
     # Update interview with explicit updated_at (SQLAlchemy onupdate may not fire for binary)
+    safe_filename = sanitize_filename(file.filename)
     interview.cv_data = cv_data
-    interview.cv_filename = file.filename
+    interview.cv_filename = safe_filename
     interview.updated_at = utc_now()
 
     await db.commit()
 
-    log_to_console(f"✅ CV uploaded for interview {interview_id}: {file.filename}")
-    return {"message": "CV uploaded successfully", "filename": file.filename}
+    log_to_console(f"✅ CV uploaded for interview {interview_id}: {safe_filename}")
+    return {"message": "CV uploaded successfully", "filename": safe_filename}
 
 
 @router.delete("/{interview_id}/cv")
