@@ -130,6 +130,12 @@ const setLink = () => {
     return
   }
 
+  // Validate URL protocol to prevent javascript: XSS
+  if (!url.match(/^(https?:|mailto:)/i)) {
+    alert('Only http, https, and mailto links are allowed')
+    return
+  }
+
   editor.value.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
 }
 </script>

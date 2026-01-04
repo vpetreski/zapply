@@ -100,7 +100,7 @@ async def list_interviews(
     count_query = select(func.count(Interview.id))
     if status:
         count_query = count_query.filter(Interview.status == status)
-    total = (await db.execute(count_query)).scalar_one()
+    total = (await db.execute(count_query)).scalar() or 0
 
     # Order by updated_at descending (most recently updated first)
     query = query.order_by(Interview.updated_at.desc())
