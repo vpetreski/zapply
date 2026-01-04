@@ -218,6 +218,11 @@ async def download_cv(
     )
 
 
+# PDF magic bytes signature
+PDF_MAGIC_BYTES = b"%PDF-"
+MAX_CV_SIZE = 10 * 1024 * 1024  # 10MB
+
+
 @router.post("/{interview_id}/cv")
 async def upload_cv(
     interview_id: int,
@@ -228,9 +233,24 @@ async def upload_cv(
     """Upload CV PDF for an interview."""
     log_to_console(f"📡 API: POST /api/interviews/{interview_id}/cv - Upload CV")
 
-    # Validate file type
+    # Validate content-type header (basic check, validated further with magic bytes)
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+
+    # Check file size before reading full content (if size is available)
+    if file.size is not None and file.size > MAX_CV_SIZE:
+        raise HTTPException(status_code=400, detail="File size must be less than 10MB")
+
+    # Read file content
+    cv_data = await file.read()
+
+    # Validate file size after reading (in case size wasn't available beforehand)
+    if len(cv_data) > MAX_CV_SIZE:
+        raise HTTPException(status_code=400, detail="File size must be less than 10MB")
+
+    # Validate PDF magic bytes to prevent content-type spoofing
+    if not cv_data.startswith(PDF_MAGIC_BYTES):
+        raise HTTPException(status_code=400, detail="Invalid PDF file")
 
     result = await db.execute(select(Interview).filter(Interview.id == interview_id))
     interview = result.scalar_one_or_none()
@@ -238,13 +258,6 @@ async def upload_cv(
     if not interview:
         log_to_console(f"❌ Interview {interview_id} not found")
         raise HTTPException(status_code=404, detail="Interview not found")
-
-    # Read file content
-    cv_data = await file.read()
-
-    # Validate file size (max 10MB)
-    if len(cv_data) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File size must be less than 10MB")
 
     # Update interview
     interview.cv_data = cv_data
