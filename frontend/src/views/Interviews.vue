@@ -401,7 +401,7 @@ const downloadCv = async (interviewId) => {
     url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', 'Resume-Vanja-Petreski.pdf')
+    link.setAttribute('download', 'Resume.pdf')
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

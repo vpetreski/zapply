@@ -46,10 +46,10 @@ def sanitize_html(html: Optional[str]) -> Optional[str]:
     )
 
 
-def sanitize_filename(filename: Optional[str]) -> str:
+def sanitize_filename(filename: Optional[str], default: str = "Resume.pdf") -> str:
     """Sanitize filename to prevent path traversal and invalid characters."""
     if not filename:
-        return "resume.pdf"
+        return default
     # Get just the filename, no path components
     safe_name = Path(filename).name
     # Remove any non-alphanumeric chars except . - _
@@ -248,8 +248,8 @@ async def download_cv(
         log_to_console(f"❌ No CV attached to interview {interview_id}")
         raise HTTPException(status_code=404, detail="No CV attached to this interview")
 
-    # Use stored filename or default
-    download_filename = interview.cv_filename or "Resume-Vanja-Petreski.pdf"
+    # Sanitize filename again to prevent header injection from legacy data
+    download_filename = sanitize_filename(interview.cv_filename)
     log_to_console(f"✅ Downloading CV for interview {interview_id}: {download_filename}")
     return StreamingResponse(
         BytesIO(interview.cv_data),
