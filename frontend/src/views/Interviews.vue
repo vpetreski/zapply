@@ -133,7 +133,7 @@
           </button>
           <div class="modal-footer-right">
             <button @click="closeModal" class="btn btn-secondary" :disabled="saving">Cancel</button>
-            <button @click="saveInterview" class="btn btn-primary" :disabled="saving || !formData.title.trim()">
+            <button type="button" @click="saveInterview" class="btn btn-primary" :disabled="saving || !formData.title?.trim()">
               {{ saving ? 'Saving...' : (isEditing ? 'Update' : 'Create') }}
             </button>
           </div>
@@ -360,7 +360,8 @@ const saveInterview = async () => {
     closeModal()
   } catch (error) {
     console.error('Failed to save interview:', error)
-    alert('Failed to save interview. Please try again.')
+    const message = error.response?.data?.detail || error.message || 'Unknown error'
+    alert(`Failed to save interview: ${message}`)
   } finally {
     saving.value = false
   }
