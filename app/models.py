@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -296,3 +296,44 @@ class SourceRun(Base):
 
     def __repr__(self) -> str:
         return f"<SourceRun {self.id}: {self.source_name} ({self.status})>"
+
+
+class InterviewStatus(str, Enum):
+    """Interview tracking status."""
+
+    ACTIVE = "active"
+    CLOSED = "closed"
+
+
+class Interview(Base):
+    """Interview process tracking."""
+
+    __tablename__ = "interviews"
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'closed')", name="ck_interview_status"),
+        Index("ix_interviews_status_updated", "status", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Core fields
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)  # HTML content from rich text editor
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=InterviewStatus.ACTIVE.value, index=True
+    )
+
+    # Custom CV attachment
+    cv_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # PDF binary
+    cv_filename: Mapped[Optional[str]] = mapped_column(String(255))  # Original filename
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now, index=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<Interview {self.id}: {self.title} ({self.status})>"

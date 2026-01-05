@@ -7,6 +7,7 @@
       <nav class="nav">
         <RouterLink to="/">Jobs</RouterLink>
         <RouterLink to="/runs">Runs</RouterLink>
+        <RouterLink to="/interviews">Interviews</RouterLink>
         <RouterLink to="/profile">Profile</RouterLink>
         <RouterLink to="/admin">Admin</RouterLink>
         <button @click="handleLogout" class="logout-btn">Logout</button>

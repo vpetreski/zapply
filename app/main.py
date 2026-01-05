@@ -17,7 +17,7 @@ from slowapi.util import get_remote_address
 from app import __version__
 from app.config import settings
 from app.database import engine, get_db
-from app.routers import admin, auth, health, jobs, profile, runs, scraper, sources, stats
+from app.routers import admin, auth, health, interviews, jobs, profile, runs, scraper, sources, stats
 from app.services.scheduler_service import start_scheduler_async, stop_scheduler, get_scheduler_status
 from app.services.source_service import sync_sources_with_registry
 from app.utils import log_to_console, run_migrations
@@ -128,6 +128,7 @@ app.include_router(auth.router, tags=["Authentication"])
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(runs.router, tags=["Runs"])
+app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews"])
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["Scraper"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
